@@ -1,27 +1,34 @@
 /**
- * @fileoverview Syncs DI templates and data CSVs from a public Google Drive folder.
- * Uses the Google Drive v3 REST API with an API key (no OAuth required for public folders).
+ * @fileoverview 從公開的遠端資料夾（GitHub raw 或任何支援 CORS 的靜態主機）
+ * 同步 DI 範本與 CSV 資料檔，完全不需要 API 金鑰或任何驗證。
+ *
+ * 同步原理：
+ *  1. 從設定的 Base URL 下載 manifest.json
+ *  2. 比對每個檔案的 updated 時間戳記與本機快取
+ *  3. 下載有變更的檔案（.di 範本、legislators.csv、groups.csv）
+ *
+ * manifest.json 格式範例（放在 Base URL 對應的資料夾）：
+ * ```json
+ * {
+ *   "files": [
+ *     { "name": "8-1_函復議會協調案件.di", "updated": "2025-01-15" },
+ *     { "name": "legislators.csv",          "updated": "2025-01-10" },
+ *     { "name": "groups.csv",               "updated": "2025-01-10" }
+ *   ]
+ * }
+ * ```
+ *
+ * 推薦使用 GitHub 公開儲存庫：
+ *   Base URL 範例：https://raw.githubusercontent.com/帳號/儲存庫名稱/main/templates
  */
 
 import { get, put, STORES } from './db.js';
 
-/** @type {string} */
-const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
-
-/** IndexedDB key used to persist sync metadata (last-known modifiedTimes). */
+/** IndexedDB key for caching sync metadata (last-known updated timestamps). */
 const SYNC_META_KEY = 'syncMeta';
 
 /** Settings keys. */
-const SETTINGS_FOLDER_ID = 'driveFolderId';
-const SETTINGS_API_KEY   = 'driveApiKey';
-
-/**
- * @typedef {Object} DriveFile
- * @property {string} id
- * @property {string} name
- * @property {string} modifiedTime  - ISO 8601
- * @property {string} mimeType
- */
+const SETTINGS_BASE_URL = 'syncBaseUrl';
 
 /**
  * @typedef {Object} SyncItemTemplate
@@ -34,7 +41,7 @@ const SETTINGS_API_KEY   = 'driveApiKey';
 /**
  * @typedef {Object} SyncItemData
  * @property {'legislators'|'groups'} type
- * @property {string}                 content  - Raw CSV text
+ * @property {string}                 content
  */
 
 /**
@@ -43,17 +50,16 @@ const SETTINGS_API_KEY   = 'driveApiKey';
 
 /**
  * @typedef {Object} SyncResult
- * @property {boolean}     updated  - True if at least one file was downloaded.
- * @property {SyncItem[]}  items    - All downloaded items.
- * @property {string|null} error    - Error message, or null on success.
+ * @property {boolean}     updated
+ * @property {SyncItem[]}  items
+ * @property {string|null} error
  */
 
 export class DriveSync {
   /**
-   * @param {import('./db.js').IDBDatabase} db  - Kept for API symmetry; calls go via helpers.
+   * @param {object} db - Kept for API symmetry; all DB calls use module helpers.
    */
   constructor(db) {
-    /** @private */
     this._db = db;
   }
 
@@ -62,97 +68,69 @@ export class DriveSync {
   // ---------------------------------------------------------------------------
 
   /**
-   * Read Drive configuration from the settings store.
+   * Read sync configuration from IndexedDB settings store.
    *
-   * @returns {Promise<{folderId: string, apiKey: string}|null>}
-   *   Null when either value is missing/empty.
+   * @returns {Promise<{baseUrl: string}|null>} null if not yet configured.
    */
   async getConfig() {
-    const [folderRecord, keyRecord] = await Promise.all([
-      get(STORES.SETTINGS, SETTINGS_FOLDER_ID),
-      get(STORES.SETTINGS, SETTINGS_API_KEY),
-    ]);
-
-    const folderId = folderRecord?.value ?? '';
-    const apiKey   = keyRecord?.value   ?? '';
-
-    if (!folderId || !apiKey) return null;
-
-    return { folderId, apiKey };
+    const record = await get(STORES.SETTINGS, SETTINGS_BASE_URL);
+    const baseUrl = (record?.value ?? '').trim().replace(/\/$/, '');
+    if (!baseUrl) return null;
+    return { baseUrl };
   }
 
   /**
-   * Persist Drive configuration.
+   * Persist sync configuration.
    *
-   * @param {string} folderId
-   * @param {string} apiKey
-   * @returns {Promise<void>}
+   * @param {string} baseUrl - Base URL of the remote template folder (no trailing slash).
    */
-  async saveConfig(folderId, apiKey) {
-    await Promise.all([
-      put(STORES.SETTINGS, { id: SETTINGS_FOLDER_ID, value: folderId }),
-      put(STORES.SETTINGS, { id: SETTINGS_API_KEY,   value: apiKey   }),
-    ]);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Drive API calls
-  // ---------------------------------------------------------------------------
-
-  /**
-   * List all files inside a Google Drive folder.
-   *
-   * @param {string} folderId
-   * @param {string} apiKey
-   * @returns {Promise<DriveFile[]>}
-   * @throws {Error} On network or API errors.
-   */
-  async listFiles(folderId, apiKey) {
-    const params = new URLSearchParams({
-      q:       `'${folderId}' in parents and trashed = false`,
-      fields:  'files(id,name,modifiedTime,mimeType)',
-      key:     apiKey,
-      pageSize: '1000',
+  async saveConfig(baseUrl) {
+    await put(STORES.SETTINGS, {
+      id:    SETTINGS_BASE_URL,
+      value: baseUrl.trim().replace(/\/$/, ''),
     });
+  }
 
-    const resp = await fetch(`${DRIVE_FILES_URL}?${params}`);
+  // ---------------------------------------------------------------------------
+  // Remote fetch helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fetch and parse the manifest.json from the remote folder.
+   *
+   * @param {string} baseUrl
+   * @returns {Promise<Array<{name: string, updated: string}>>}
+   */
+  async fetchManifest(baseUrl) {
+    const url = `${baseUrl}/manifest.json`;
+    const resp = await fetch(url, { cache: 'no-cache' });
 
     if (!resp.ok) {
-      let errMsg = `HTTP ${resp.status}`;
-      try {
-        const body = await resp.json();
-        errMsg = body?.error?.message ?? errMsg;
-      } catch (_) { /* ignore */ }
-      throw new Error(`Drive 資料夾列舉失敗：${errMsg}`);
+      throw new Error(`無法下載 manifest.json（${resp.status}）：${url}`);
     }
 
     const data = await resp.json();
-    return data.files ?? [];
+
+    if (!Array.isArray(data?.files)) {
+      throw new Error('manifest.json 格式不正確，需包含 "files" 陣列。');
+    }
+
+    return data.files;
   }
 
   /**
-   * Download the text content of a single Drive file.
+   * Download a single file as text.
    *
-   * @param {string} fileId
-   * @param {string} apiKey
+   * @param {string} baseUrl
+   * @param {string} filename
    * @returns {Promise<string>}
-   * @throws {Error} On network or API errors.
    */
-  async downloadFile(fileId, apiKey) {
-    const params = new URLSearchParams({
-      alt: 'media',
-      key: apiKey,
-    });
-
-    const resp = await fetch(`${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?${params}`);
+  async fetchFile(baseUrl, filename) {
+    const url = `${baseUrl}/${encodeURIComponent(filename)}`;
+    const resp = await fetch(url, { cache: 'no-cache' });
 
     if (!resp.ok) {
-      let errMsg = `HTTP ${resp.status}`;
-      try {
-        const body = await resp.json();
-        errMsg = body?.error?.message ?? errMsg;
-      } catch (_) { /* ignore */ }
-      throw new Error(`檔案下載失敗（${fileId}）：${errMsg}`);
+      throw new Error(`檔案下載失敗「${filename}」（${resp.status}）`);
     }
 
     return resp.text();
@@ -163,17 +141,7 @@ export class DriveSync {
   // ---------------------------------------------------------------------------
 
   /**
-   * Sync DI templates and CSV data files from the configured Drive folder.
-   *
-   * Steps:
-   *  1. Read saved Drive config — abort silently if not configured.
-   *  2. List all files in the folder.
-   *  3. Compare each file's modifiedTime against the cached syncMeta.
-   *  4. Download files that are new or changed:
-   *     - *.di          → SyncItemTemplate
-   *     - legislators.csv → SyncItemData {type:'legislators'}
-   *     - groups.csv    → SyncItemData {type:'groups'}
-   *  5. Persist updated syncMeta.
+   * Sync all files from the configured remote folder.
    *
    * @returns {Promise<SyncResult>}
    */
@@ -181,7 +149,7 @@ export class DriveSync {
     /** @type {SyncItem[]} */
     const items = [];
 
-    // 1. Get config.
+    // 1. Get config — skip silently if not configured yet.
     let config;
     try {
       config = await this.getConfig();
@@ -190,21 +158,20 @@ export class DriveSync {
     }
 
     if (!config) {
-      // Not yet configured — silently skip.
       return { updated: false, items, error: null };
     }
 
-    const { folderId, apiKey } = config;
+    const { baseUrl } = config;
 
-    // 2. List Drive folder.
-    let driveFiles;
+    // 2. Fetch manifest.
+    let manifestFiles;
     try {
-      driveFiles = await this.listFiles(folderId, apiKey);
+      manifestFiles = await this.fetchManifest(baseUrl);
     } catch (err) {
       return { updated: false, items, error: err.message };
     }
 
-    // 3. Load existing syncMeta from DB.
+    // 3. Load existing sync metadata from IndexedDB.
     let syncMeta = {};
     try {
       const metaRecord = await get(STORES.DATA, SYNC_META_KEY);
@@ -216,40 +183,41 @@ export class DriveSync {
     const updatedMeta = { ...syncMeta };
     let anyUpdated = false;
 
-    // 4. Process each file.
-    for (const file of driveFiles) {
-      const { id, name, modifiedTime } = file;
+    // 4. Process each file in the manifest.
+    for (const entry of manifestFiles) {
+      const { name, updated } = entry;
+      if (!name) continue;
 
-      const isDiTemplate   = /\.di$/i.test(name);
-      const isLegislators  = name.toLowerCase() === 'legislators.csv';
-      const isGroups        = name.toLowerCase() === 'groups.csv';
+      const isDiTemplate  = /\.di$/i.test(name);
+      const isLegislators = name.toLowerCase() === 'legislators.csv';
+      const isGroups      = name.toLowerCase() === 'groups.csv';
 
       if (!isDiTemplate && !isLegislators && !isGroups) continue;
 
-      // Skip if unchanged.
-      if (syncMeta[id] === modifiedTime) continue;
+      // Skip if unchanged (same updated timestamp as last sync).
+      if (syncMeta[name] === updated) continue;
 
       let content;
       try {
-        content = await this.downloadFile(id, apiKey);
+        content = await this.fetchFile(baseUrl, name);
       } catch (err) {
         console.warn(`[DriveSync] 跳過 "${name}"：${err.message}`);
         continue;
       }
 
       if (isDiTemplate) {
-        items.push({ type: 'template', filename: name, content, modifiedTime });
+        items.push({ type: 'template', filename: name, content, modifiedTime: updated ?? '' });
       } else if (isLegislators) {
         items.push({ type: 'legislators', content });
       } else if (isGroups) {
         items.push({ type: 'groups', content });
       }
 
-      updatedMeta[id] = modifiedTime;
+      updatedMeta[name] = updated;
       anyUpdated = true;
     }
 
-    // 5. Persist updated meta.
+    // 5. Persist updated metadata.
     if (anyUpdated) {
       try {
         await put(STORES.DATA, { id: SYNC_META_KEY, payload: updatedMeta });

@@ -207,11 +207,9 @@ export async function openSettings() {
   if (!modal) return;
 
   const config = await driveSync.getConfig();
-  const folderInput = /** @type {HTMLInputElement|null} */ (document.getElementById('settings-folder-id'));
-  const apiKeyInput = /** @type {HTMLInputElement|null} */ (document.getElementById('settings-api-key'));
+  const baseUrlInput = /** @type {HTMLInputElement|null} */ (document.getElementById('settings-base-url'));
 
-  if (folderInput) folderInput.value = config?.folderId ?? '';
-  if (apiKeyInput) apiKeyInput.value = config?.apiKey   ?? '';
+  if (baseUrlInput) baseUrlInput.value = config?.baseUrl ?? '';
 
   modal.classList.add('modal--open');
   modal.removeAttribute('hidden');
@@ -420,12 +418,10 @@ function _wireToolbar() {
   const saveSettingsBtn = document.getElementById('btn-save-settings');
   if (saveSettingsBtn) {
     saveSettingsBtn.addEventListener('click', async () => {
-      const folderInput = /** @type {HTMLInputElement|null} */ (document.getElementById('settings-folder-id'));
-      const apiKeyInput = /** @type {HTMLInputElement|null} */ (document.getElementById('settings-api-key'));
-      const folderId = folderInput?.value?.trim() ?? '';
-      const apiKey   = apiKeyInput?.value?.trim() ?? '';
+      const baseUrlInput = /** @type {HTMLInputElement|null} */ (document.getElementById('settings-base-url'));
+      const baseUrl = baseUrlInput?.value?.trim() ?? '';
       try {
-        await driveSync.saveConfig(folderId, apiKey);
+        await driveSync.saveConfig(baseUrl);
         showNotification('設定已儲存', 'success');
         const modal = document.getElementById('modal-settings');
         if (modal) _closeModal(modal);

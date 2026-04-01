@@ -23,7 +23,7 @@
 <header id="topbar">
   <h1>公文寫作輔助系統</h1>
 
-  <span id="sync-status" title="Google Drive 同步狀態"></span>
+  <span id="sync-status" title="範本同步狀態"></span>
   <span id="document-title" title="目前範本"></span>
 
   <button class="topbar-btn" id="btn-select-template" title="選擇或切換公文範本">
@@ -35,7 +35,7 @@
   <button class="topbar-btn primary" id="btn-export" title="驗證並匯出 DI 檔">
     ⬇️ 匯出
   </button>
-  <button class="topbar-btn" id="btn-settings" title="設定 Google Drive 同步">
+  <button class="topbar-btn" id="btn-settings" title="設定範本同步來源">
     ⚙️ 設定
   </button>
 </header>
@@ -104,46 +104,43 @@
 
     <div class="modal-body">
       <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:1.25rem;line-height:1.6">
-        設定公開的 Google Drive 資料夾，系統啟動時會自動下載最新的公文範本、議員名單及組別資料。
+        設定公開的靜態檔案來源網址，系統啟動時會自動下載最新的公文範本、議員名單及組別資料。<br>
+        <strong>不需要任何 API 金鑰或帳號驗證。</strong>
       </p>
 
       <div class="settings-form">
         <div class="settings-field">
-          <label for="settings-folder-id">Google Drive 資料夾 ID</label>
+          <label for="settings-base-url">範本資料夾網址（Base URL）</label>
           <input
-            type="text"
-            id="settings-folder-id"
-            placeholder="例：1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+            type="url"
+            id="settings-base-url"
+            placeholder="例：https://raw.githubusercontent.com/帳號/儲存庫/main/templates"
             autocomplete="off"
             spellcheck="false"
           />
           <span class="help-text">
-            從 Drive 資料夾的分享連結中複製 ID（URL 中 /folders/ 之後的部分）
+            推薦使用 <strong>GitHub 公開儲存庫</strong>（raw.githubusercontent.com），完全免費且無需金鑰。
           </span>
         </div>
 
-        <div class="settings-field">
-          <label for="settings-api-key">Google Drive API 金鑰</label>
-          <input
-            type="password"
-            id="settings-api-key"
-            placeholder="AIza..."
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <span class="help-text">
-            至 <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>
-            啟用 Drive API 後建立 API 金鑰（限制為 HTTP 參照者網址以提高安全性）
-          </span>
-        </div>
-
-        <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--border-radius);padding:0.75rem;font-size:0.8rem;color:var(--gray-500);">
-          <strong>Drive 資料夾結構：</strong>
-          <ul style="margin:0.4rem 0 0 1rem;line-height:1.8">
+        <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--border-radius);padding:0.85rem;font-size:0.8rem;color:var(--gray-500);line-height:1.7">
+          <strong>📁 資料夾內需包含以下檔案：</strong>
+          <ul style="margin:0.5rem 0 0 1.2rem;">
+            <li><code>manifest.json</code> — 檔案清單（必要，格式如下）</li>
             <li><code>8-1_函復議會協調案件.di</code> — 公文範本（命名格式：<code>案件類型_名稱.di</code>）</li>
-            <li><code>legislators.csv</code> — 議員名單（每行一個姓名）</li>
-            <li><code>groups.csv</code> — 組別對應表（欄位：組別,議員姓名）</li>
+            <li><code>legislators.csv</code> — 議員名單（每行一個姓名，無標題列）</li>
+            <li><code>groups.csv</code> — 組別對應表（標題列：<code>組別,議員姓名</code>）</li>
           </ul>
+          <details style="margin-top:0.75rem">
+            <summary style="cursor:pointer;font-weight:600;color:var(--gray-600)">manifest.json 格式範例</summary>
+            <pre style="margin:0.5rem 0 0;background:#fff;border:1px solid var(--gray-200);border-radius:4px;padding:0.5rem;font-size:0.75rem;overflow-x:auto;">{
+  "files": [
+    { "name": "8-1_函復議會協調案件.di", "updated": "2025-01-15" },
+    { "name": "legislators.csv",          "updated": "2025-01-10" },
+    { "name": "groups.csv",               "updated": "2025-01-10" }
+  ]
+}</pre>
+          </details>
         </div>
       </div>
     </div>
