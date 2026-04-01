@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="公文寫作輔助系統 — 資料僅儲存於本機" />
+  <title>公文寫作輔助系統</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1a56db" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="公文助理" />
+
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<!-- ====================================================
+     Top Navigation Bar
+     ==================================================== -->
+<header id="topbar">
+  <h1>公文寫作輔助系統</h1>
+
+  <span id="sync-status" title="Google Drive 同步狀態"></span>
+  <span id="document-title" title="目前範本"></span>
+
+  <button class="topbar-btn" id="btn-select-template" title="選擇或切換公文範本">
+    📂 選擇範本
+  </button>
+  <button class="topbar-btn" id="btn-save-draft" title="立即儲存草稿至本機">
+    💾 儲存草稿
+  </button>
+  <button class="topbar-btn primary" id="btn-export" title="驗證並匯出 DI 檔">
+    ⬇️ 匯出
+  </button>
+  <button class="topbar-btn" id="btn-settings" title="設定 Google Drive 同步">
+    ⚙️ 設定
+  </button>
+</header>
+
+<!-- ====================================================
+     Main Content
+     ==================================================== -->
+<main id="main-content">
+
+  <!-- Welcome / empty state shown before a template is loaded -->
+  <div id="welcome-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem;padding:5rem 1rem;text-align:center;">
+    <div style="font-size:3.5rem">📋</div>
+    <h2 style="font-size:1.3rem;color:var(--gray-700)">歡迎使用公文寫作輔助系統</h2>
+    <p style="color:var(--gray-500);max-width:400px">
+      請點選上方「📂 選擇範本」開始編輯，或等候系統自動還原上次草稿。
+    </p>
+    <p style="color:var(--gray-400);font-size:0.8rem">
+      所有公文資料僅儲存於您的瀏覽器本機，不會上傳至任何伺服器。
+    </p>
+  </div>
+
+  <!-- Editor mounts here -->
+  <div id="editor-container" style="display:flex;flex-direction:column;gap:0;"></div>
+
+</main>
+
+<!-- ====================================================
+     Modal: Template Selector
+     ==================================================== -->
+<div class="modal" id="modal-template" hidden aria-modal="true" role="dialog" aria-labelledby="modal-template-title">
+  <div class="modal-box md">
+
+    <div class="modal-header">
+      <h2 id="modal-template-title">選擇公文範本</h2>
+      <button class="modal-close" data-close-modal="modal-template" title="關閉" aria-label="關閉">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Draft restore button (hidden by default, shown by app.js if draft exists) -->
+      <button id="btn-restore-draft" style="display:none" type="button">
+        🔄 繼續上次未完成的草稿
+      </button>
+      <p id="draft-info"></p>
+
+      <!-- Template list populated by app.js -->
+      <div id="template-list"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="modal-template">關閉</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====================================================
+     Modal: Settings
+     ==================================================== -->
+<div class="modal" id="modal-settings" hidden aria-modal="true" role="dialog" aria-labelledby="modal-settings-title">
+  <div class="modal-box sm">
+
+    <div class="modal-header">
+      <h2 id="modal-settings-title">⚙️ 設定</h2>
+      <button class="modal-close" data-close-modal="modal-settings" title="關閉" aria-label="關閉">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:1.25rem;line-height:1.6">
+        設定公開的 Google Drive 資料夾，系統啟動時會自動下載最新的公文範本、議員名單及組別資料。
+      </p>
+
+      <div class="settings-form">
+        <div class="settings-field">
+          <label for="settings-folder-id">Google Drive 資料夾 ID</label>
+          <input
+            type="text"
+            id="settings-folder-id"
+            placeholder="例：1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <span class="help-text">
+            從 Drive 資料夾的分享連結中複製 ID（URL 中 /folders/ 之後的部分）
+          </span>
+        </div>
+
+        <div class="settings-field">
+          <label for="settings-api-key">Google Drive API 金鑰</label>
+          <input
+            type="password"
+            id="settings-api-key"
+            placeholder="AIza..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <span class="help-text">
+            至 <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>
+            啟用 Drive API 後建立 API 金鑰（限制為 HTTP 參照者網址以提高安全性）
+          </span>
+        </div>
+
+        <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--border-radius);padding:0.75rem;font-size:0.8rem;color:var(--gray-500);">
+          <strong>Drive 資料夾結構：</strong>
+          <ul style="margin:0.4rem 0 0 1rem;line-height:1.8">
+            <li><code>8-1_函復議會協調案件.di</code> — 公文範本（命名格式：<code>案件類型_名稱.di</code>）</li>
+            <li><code>legislators.csv</code> — 議員名單（每行一個姓名）</li>
+            <li><code>groups.csv</code> — 組別對應表（欄位：組別,議員姓名）</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="modal-settings">取消</button>
+      <button class="btn btn-primary" id="btn-save-settings">儲存並同步</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====================================================
+     Modal: Validation Warnings
+     ==================================================== -->
+<div class="modal" id="modal-validation" hidden aria-modal="true" role="dialog" aria-labelledby="modal-validation-title">
+  <div class="modal-box md">
+
+    <div class="modal-header">
+      <h2 id="modal-validation-title">⚠️ 匯出前檢核結果</h2>
+      <button class="modal-close" data-close-modal="modal-validation" title="關閉" aria-label="關閉">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <p style="font-size:0.88rem;color:var(--gray-600);margin-bottom:1rem;">
+        系統發現以下問題，請確認後再決定是否繼續匯出：
+      </p>
+      <ul id="validation-list"></ul>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btn-validation-cancel">取消，繼續編輯</button>
+      <button class="btn btn-primary" id="btn-validation-confirm">確認，仍要匯出</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====================================================
+     Toast / Notification Container (populated by app.js)
+     ==================================================== -->
+<div id="notifications" role="status" aria-live="polite"></div>
+
+<!-- ====================================================
+     App Entry Point
+     ==================================================== -->
+<script type="module" src="js/app.js"></script>
+
+</body>
+</html>
