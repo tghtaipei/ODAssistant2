@@ -133,7 +133,7 @@ async function _syncInBackground() {
     }
 
     if (statusEl) statusEl.textContent = `已更新 ${result.items.length} 個檔案`;
-    showNotification(`已從 Google Drive 更新 ${result.items.length} 個檔案`, 'success');
+    showNotification(`已更新 ${result.items.length} 個檔案`, 'success');
   } catch (err) {
     console.error('[app] 同步錯誤：', err);
     if (statusEl) statusEl.textContent = '同步錯誤';
@@ -176,7 +176,7 @@ export function openTemplateSelector(draft) {
   if (templates.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'template-list__empty';
-    empty.textContent = '尚無可用範本。請先在設定中填入 Google Drive 資料夾 ID 並同步。';
+    empty.textContent = '尚無可用範本。請先點選「⚙️ 設定」填入範本資料夾網址，再重新整理頁面。';
     listEl.appendChild(empty);
   } else {
     templates.forEach(({ filename }) => {
