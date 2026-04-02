@@ -163,6 +163,9 @@ export class TemplateStore {
     // an underscore or space separator.
     name = name.replace(/^[\d][\d\-.]*[ _]/, '');
 
+    // Remove trailing _匯出 suffix (common in exported template filenames).
+    name = name.replace(/_匯出$/, '');
+
     return name;
   }
 }

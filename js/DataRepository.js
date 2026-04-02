@@ -4,9 +4,11 @@
  * Parses raw CSV strings, exposes typed query methods, and persists to
  * IndexedDB via the `db` module.
  *
- * CSV formats:
- *  - `legislators.csv` — one legislator name per line, no header.
- *  - `groups.csv`      — `組別,議員姓名` header row, then data rows.
+ * CSV format (議員分組.csv):
+ *   部門,組別號碼,姓名
+ *   警政衛生部門,1,洪健益
+ *   警政衛生部門,1,劉耀仁
+ *   警政衛生部門,2,應曉薇
  *
  * Data is stored in IndexedDB under the DATA store using the keys
  * `'legislators'` and `'groups'`.
@@ -77,13 +79,29 @@ export class DataRepository {
   // ---------------------------------------------------------------------------
 
   /**
-   * Parse a `legislators.csv` string and replace the in-memory roster.
+   * Parse 「議員分組.csv」 and replace the in-memory roster and group mapping.
    *
-   * Expected format: one legislator name per line, no header row.
-   * Empty lines are ignored.
+   * Expected format (no header row):
+   * ```
+   * 部門,組別號碼,姓名
+   * 警政衛生部門,1,洪健益
+   * 警政衛生部門,2,應曉薇
+   * ```
+   * Column 0 = 部門 (ignored), Column 1 = 組別號碼, Column 2 = 姓名
    *
    * @param {string} csvContent - Raw CSV text.
    * @returns {Promise<void>}
+   */
+  async loadMemberGroupCSV(csvContent) {
+    const { legislators, groups } = this._parseMemberGroupCsv(csvContent);
+    this._legislators = legislators;
+    this._groups = groups;
+    await Promise.all([this.persistLegislators(), this.persistGroups()]);
+  }
+
+  /**
+   * @deprecated 舊格式，保留向下相容。
+   * @param {string} csvContent
    */
   async loadLegislatorsCSV(csvContent) {
     this._legislators = this._parseLegislatorsCsv(csvContent);
@@ -91,20 +109,8 @@ export class DataRepository {
   }
 
   /**
-   * Parse a `groups.csv` string and replace the in-memory group mapping.
-   *
-   * Expected format:
-   * ```
-   * 組別,議員姓名
-   * 第1組,王大明
-   * 第1組,李小華
-   * 第2組,陳志偉
-   * ```
-   * The header row is detected by the presence of `組別` or `議員姓名` in the
-   * first line and is skipped automatically.
-   *
-   * @param {string} csvContent - Raw CSV text.
-   * @returns {Promise<void>}
+   * @deprecated 舊格式，保留向下相容。
+   * @param {string} csvContent
    */
   async loadGroupsCSV(csvContent) {
     this._groups = this._parseGroupsCsv(csvContent);
@@ -247,6 +253,39 @@ export class DataRepository {
     } catch (err) {
       console.error('[DataRepository] 載入組別資料失敗：', err);
     }
+  }
+
+  /**
+   * Parse 「議員分組.csv」 content into legislators Set and groups Map.
+   *
+   * Format: 部門,組別號碼,姓名
+   * The group string stored is `第N組` where N is column 1.
+   *
+   * @private
+   * @param {string} csv
+   * @returns {{ legislators: Set<string>, groups: Map<string, string> }}
+   */
+  _parseMemberGroupCsv(csv) {
+    const legislators = new Set();
+    const groups = new Map();
+
+    if (!csv) return { legislators, groups };
+
+    const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+    for (const line of lines) {
+      const cols = line.split(',').map((c) => c.trim());
+      if (cols.length < 3) continue;
+      // cols[0] = 部門 (ignored), cols[1] = 組別號碼, cols[2] = 姓名
+      const groupNum = cols[1];
+      const name     = cols[2];
+      if (!name || !groupNum) continue;
+
+      legislators.add(name);
+      groups.set(name, `第${groupNum}組`);
+    }
+
+    return { legislators, groups };
   }
 
   /**

@@ -125,6 +125,8 @@ async function _syncInBackground() {
           content:      item.content,
           modifiedTime: item.modifiedTime,
         });
+      } else if (item.type === 'memberGroup') {
+        await dataRepo.loadMemberGroupCSV(item.content);
       } else if (item.type === 'legislators') {
         await dataRepo.loadLegislatorsCSV(item.content);
       } else if (item.type === 'groups') {

@@ -1,34 +1,25 @@
 /**
- * @fileoverview 從公開的遠端資料夾（GitHub raw 或任何支援 CORS 的靜態主機）
- * 同步 DI 範本與 CSV 資料檔，完全不需要 API 金鑰或任何驗證。
+ * @fileoverview 從公開的 GitHub 儲存庫同步 DI 範本與 CSV 資料檔。
  *
- * 同步原理：
- *  1. 從設定的 Base URL 下載 manifest.json
- *  2. 比對每個檔案的 updated 時間戳記與本機快取
- *  3. 下載有變更的檔案（.di 範本、legislators.csv、groups.csv）
+ * 使用 GitHub Contents API（公開儲存庫不需要 API 金鑰）自動列出目錄，
+ * 不需要 manifest.json — 所有 .di 副檔名的檔案都視為範本，
+ * 「議員分組.csv」作為議員名單與組別對應表。
  *
- * manifest.json 格式範例（放在 Base URL 對應的資料夾）：
- * ```json
- * {
- *   "files": [
- *     { "name": "8-1_函復議會協調案件.di", "updated": "2025-01-15" },
- *     { "name": "legislators.csv",          "updated": "2025-01-10" },
- *     { "name": "groups.csv",               "updated": "2025-01-10" }
- *   ]
- * }
- * ```
- *
- * 推薦使用 GitHub 公開儲存庫：
- *   Base URL 範例：https://raw.githubusercontent.com/帳號/儲存庫名稱/main/templates
+ * Base URL 格式：
+ *   https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}
+ *   例：https://raw.githubusercontent.com/tghtaipei/od-templates/main/templates
  */
 
 import { get, put, STORES } from './db.js';
 
-/** IndexedDB key for caching sync metadata (last-known updated timestamps). */
+/** IndexedDB key for caching file SHAs (to detect changes). */
 const SYNC_META_KEY = 'syncMeta';
 
-/** Settings keys. */
+/** Settings key. */
 const SETTINGS_BASE_URL = 'syncBaseUrl';
+
+/** CSV 檔名（固定） */
+const MEMBER_CSV_NAME = '議員分組.csv';
 
 /**
  * @typedef {Object} SyncItemTemplate
@@ -39,13 +30,13 @@ const SETTINGS_BASE_URL = 'syncBaseUrl';
  */
 
 /**
- * @typedef {Object} SyncItemData
- * @property {'legislators'|'groups'} type
- * @property {string}                 content
+ * @typedef {Object} SyncItemMemberGroup
+ * @property {'memberGroup'} type
+ * @property {string}        content
  */
 
 /**
- * @typedef {SyncItemTemplate|SyncItemData} SyncItem
+ * @typedef {SyncItemTemplate|SyncItemMemberGroup} SyncItem
  */
 
 /**
@@ -57,7 +48,7 @@ const SETTINGS_BASE_URL = 'syncBaseUrl';
 
 export class DriveSync {
   /**
-   * @param {object} db - Kept for API symmetry; all DB calls use module helpers.
+   * @param {object} db - Kept for API symmetry.
    */
   constructor(db) {
     this._db = db;
@@ -68,9 +59,7 @@ export class DriveSync {
   // ---------------------------------------------------------------------------
 
   /**
-   * Read sync configuration from IndexedDB settings store.
-   *
-   * @returns {Promise<{baseUrl: string}|null>} null if not yet configured.
+   * @returns {Promise<{baseUrl: string}|null>}
    */
   async getConfig() {
     const record = await get(STORES.SETTINGS, SETTINGS_BASE_URL);
@@ -80,9 +69,7 @@ export class DriveSync {
   }
 
   /**
-   * Persist sync configuration.
-   *
-   * @param {string} baseUrl - Base URL of the remote template folder (no trailing slash).
+   * @param {string} baseUrl
    */
   async saveConfig(baseUrl) {
     await put(STORES.SETTINGS, {
@@ -92,48 +79,52 @@ export class DriveSync {
   }
 
   // ---------------------------------------------------------------------------
-  // Remote fetch helpers
+  // GitHub API helpers
   // ---------------------------------------------------------------------------
 
   /**
-   * Fetch and parse the manifest.json from the remote folder.
+   * 將 raw.githubusercontent.com 網址轉換為 GitHub Contents API 網址。
+   *
+   * 輸入：https://raw.githubusercontent.com/owner/repo/branch/path
+   * 輸出：https://api.github.com/repos/owner/repo/contents/path?ref=branch
    *
    * @param {string} baseUrl
-   * @returns {Promise<Array<{name: string, updated: string}>>}
+   * @returns {string|null}
    */
-  async fetchManifest(baseUrl) {
-    const url = `${baseUrl}/manifest.json`;
-    const resp = await fetch(url, { cache: 'no-cache' });
-
-    if (!resp.ok) {
-      throw new Error(`無法下載 manifest.json（${resp.status}）：${url}`);
-    }
-
-    const data = await resp.json();
-
-    if (!Array.isArray(data?.files)) {
-      throw new Error('manifest.json 格式不正確，需包含 "files" 陣列。');
-    }
-
-    return data.files;
+  _buildApiUrl(baseUrl) {
+    const m = baseUrl.match(
+      /^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)(?:\/(.+))?$/
+    );
+    if (!m) return null;
+    const [, owner, repo, branch, path] = m;
+    return `https://api.github.com/repos/${owner}/${repo}/contents/${path ?? ''}?ref=${branch}`;
   }
 
   /**
-   * Download a single file as text.
+   * 呼叫 GitHub Contents API 列出目錄檔案。
    *
    * @param {string} baseUrl
-   * @param {string} filename
-   * @returns {Promise<string>}
+   * @returns {Promise<Array<{name: string, sha: string, download_url: string, type: string}>>}
    */
-  async fetchFile(baseUrl, filename) {
-    const url = `${baseUrl}/${encodeURIComponent(filename)}`;
-    const resp = await fetch(url, { cache: 'no-cache' });
-
-    if (!resp.ok) {
-      throw new Error(`檔案下載失敗「${filename}」（${resp.status}）`);
+  async _listDirectory(baseUrl) {
+    const apiUrl = this._buildApiUrl(baseUrl);
+    if (!apiUrl) {
+      throw new Error('不支援的網址格式，請使用 raw.githubusercontent.com 網址。');
     }
 
-    return resp.text();
+    const resp = await fetch(apiUrl, {
+      headers: { 'Accept': 'application/vnd.github.v3+json' },
+      cache: 'no-cache',
+    });
+
+    if (resp.status === 403) {
+      throw new Error('GitHub API 速率限制，請稍後再試。');
+    }
+    if (!resp.ok) {
+      throw new Error(`無法讀取範本目錄（HTTP ${resp.status}）`);
+    }
+
+    return resp.json();
   }
 
   // ---------------------------------------------------------------------------
@@ -141,7 +132,8 @@ export class DriveSync {
   // ---------------------------------------------------------------------------
 
   /**
-   * Sync all files from the configured remote folder.
+   * 同步所有 .di 範本及議員分組 CSV。
+   * 利用 GitHub API 回傳的 SHA 判斷檔案是否有變動，避免重複下載。
    *
    * @returns {Promise<SyncResult>}
    */
@@ -149,7 +141,6 @@ export class DriveSync {
     /** @type {SyncItem[]} */
     const items = [];
 
-    // 1. Get config — skip silently if not configured yet.
     let config;
     try {
       config = await this.getConfig();
@@ -163,15 +154,15 @@ export class DriveSync {
 
     const { baseUrl } = config;
 
-    // 2. Fetch manifest.
-    let manifestFiles;
+    // 1. 列出目錄
+    let entries;
     try {
-      manifestFiles = await this.fetchManifest(baseUrl);
+      entries = await this._listDirectory(baseUrl);
     } catch (err) {
       return { updated: false, items, error: err.message };
     }
 
-    // 3. Load existing sync metadata from IndexedDB.
+    // 2. 載入快取的 SHA
     let syncMeta = {};
     try {
       const metaRecord = await get(STORES.DATA, SYNC_META_KEY);
@@ -183,41 +174,45 @@ export class DriveSync {
     const updatedMeta = { ...syncMeta };
     let anyUpdated = false;
 
-    // 4. Process each file in the manifest.
-    for (const entry of manifestFiles) {
-      const { name, updated } = entry;
-      if (!name) continue;
+    // 3. 處理每個檔案
+    for (const entry of entries) {
+      if (entry.type !== 'file') continue;
 
-      const isDiTemplate  = /\.di$/i.test(name);
-      const isLegislators = name.toLowerCase() === 'legislators.csv';
-      const isGroups      = name.toLowerCase() === 'groups.csv';
+      const name = entry.name;
+      const isDi        = /\.di$/i.test(name);
+      const isMemberCsv = name === MEMBER_CSV_NAME;
 
-      if (!isDiTemplate && !isLegislators && !isGroups) continue;
+      if (!isDi && !isMemberCsv) continue;
 
-      // Skip if unchanged (same updated timestamp as last sync).
-      if (syncMeta[name] === updated) continue;
+      // SHA 相同表示檔案未變動
+      if (syncMeta[name] === entry.sha) continue;
 
       let content;
       try {
-        content = await this.fetchFile(baseUrl, name);
+        const fileResp = await fetch(entry.download_url, { cache: 'no-cache' });
+        if (!fileResp.ok) throw new Error(`HTTP ${fileResp.status}`);
+        content = await fileResp.text();
       } catch (err) {
         console.warn(`[DriveSync] 跳過 "${name}"：${err.message}`);
         continue;
       }
 
-      if (isDiTemplate) {
-        items.push({ type: 'template', filename: name, content, modifiedTime: updated ?? '' });
-      } else if (isLegislators) {
-        items.push({ type: 'legislators', content });
-      } else if (isGroups) {
-        items.push({ type: 'groups', content });
+      if (isDi) {
+        items.push({
+          type: 'template',
+          filename: name,
+          content,
+          modifiedTime: entry.sha,
+        });
+      } else if (isMemberCsv) {
+        items.push({ type: 'memberGroup', content });
       }
 
-      updatedMeta[name] = updated;
+      updatedMeta[name] = entry.sha;
       anyUpdated = true;
     }
 
-    // 5. Persist updated metadata.
+    // 4. 更新快取 SHA
     if (anyUpdated) {
       try {
         await put(STORES.DATA, { id: SYNC_META_KEY, payload: updatedMeta });

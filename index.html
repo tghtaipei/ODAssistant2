@@ -126,20 +126,16 @@
         <div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--border-radius);padding:0.85rem;font-size:0.8rem;color:var(--gray-500);line-height:1.7">
           <strong>📁 資料夾內需包含以下檔案：</strong>
           <ul style="margin:0.5rem 0 0 1.2rem;">
-            <li><code>manifest.json</code> — 檔案清單（必要，格式如下）</li>
-            <li><code>8-1_函復議會協調案件.di</code> — 公文範本（命名格式：<code>案件類型_名稱.di</code>）</li>
-            <li><code>legislators.csv</code> — 議員名單（每行一個姓名，無標題列）</li>
-            <li><code>groups.csv</code> — 組別對應表（標題列：<code>組別,議員姓名</code>）</li>
+            <li>所有 <code>.di</code> 副檔名的檔案都會自動視為公文範本</li>
+            <li><code>議員分組.csv</code> — 議員名單及組別（格式如下）</li>
           </ul>
           <details style="margin-top:0.75rem">
-            <summary style="cursor:pointer;font-weight:600;color:var(--gray-600)">manifest.json 格式範例</summary>
-            <pre style="margin:0.5rem 0 0;background:#fff;border:1px solid var(--gray-200);border-radius:4px;padding:0.5rem;font-size:0.75rem;overflow-x:auto;">{
-  "files": [
-    { "name": "8-1_函復議會協調案件.di", "updated": "2025-01-15" },
-    { "name": "legislators.csv",          "updated": "2025-01-10" },
-    { "name": "groups.csv",               "updated": "2025-01-10" }
-  ]
-}</pre>
+            <summary style="cursor:pointer;font-weight:600;color:var(--gray-600)">議員分組.csv 格式範例</summary>
+            <pre style="margin:0.5rem 0 0;background:#fff;border:1px solid var(--gray-200);border-radius:4px;padding:0.5rem;font-size:0.75rem;overflow-x:auto;">警政衛生部門,1,洪健益
+警政衛生部門,1,劉耀仁
+警政衛生部門,2,應曉薇
+警政衛生部門,2,耿葳</pre>
+            <p style="margin-top:0.4rem;font-size:0.75rem">格式：部門, 組別號碼, 姓名（無標題列，逗號分隔）</p>
           </details>
         </div>
       </div>
