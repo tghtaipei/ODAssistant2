@@ -14,6 +14,7 @@
 import { LegislatorValidator } from './LegislatorValidator.js';
 import { GroupValidator }       from './GroupValidator.js';
 import { CaseType81Validator }  from './CaseType81Validator.js';
+import { PlaceholderValidator } from './PlaceholderValidator.js';
 
 /**
  * @typedef {import('./ValidatorBase.js').ValidationResult} ValidationResult
@@ -51,6 +52,7 @@ export class ValidationEngine {
     this._registry = new Map();
 
     // Register built-in validators.
+    this.register(WILDCARD, new PlaceholderValidator());
     this.register(WILDCARD, new LegislatorValidator());
     this.register(WILDCARD, new GroupValidator());
     this.register('8-1',    new CaseType81Validator());
