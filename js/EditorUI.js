@@ -97,13 +97,9 @@ export class EditorUI {
 
     const rootEl = xmlDoc.documentElement; // <函>
 
-    this._renderBasicInfo(this._container, rootEl);
-    this._renderAgencyInfo(this._container, rootEl);
     this._renderSubject(this._container, rootEl);
     this._renderExplanation(this._container, rootEl);
-    this._renderRecipients(this._container, rootEl, '正本');
     this._renderRecipients(this._container, rootEl, '副本');
-    this._renderOthers(this._container, rootEl);
   }
 
   /**
