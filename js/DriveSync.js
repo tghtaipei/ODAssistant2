@@ -83,21 +83,37 @@ export class DriveSync {
   // ---------------------------------------------------------------------------
 
   /**
-   * 將 raw.githubusercontent.com 網址轉換為 GitHub Contents API 網址。
+   * 將 GitHub 網址轉換為 GitHub Contents API 網址。
    *
-   * 輸入：https://raw.githubusercontent.com/owner/repo/branch/path
+   * 支援兩種格式：
+   *   raw.githubusercontent.com/owner/repo/branch/path
+   *   github.com/owner/repo/tree/branch/path
+   *
    * 輸出：https://api.github.com/repos/owner/repo/contents/path?ref=branch
    *
    * @param {string} baseUrl
    * @returns {string|null}
    */
   _buildApiUrl(baseUrl) {
-    const m = baseUrl.match(
+    // Format 1: raw.githubusercontent.com
+    const rawM = baseUrl.match(
       /^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)(?:\/(.+))?$/
     );
-    if (!m) return null;
-    const [, owner, repo, branch, path] = m;
-    return `https://api.github.com/repos/${owner}/${repo}/contents/${path ?? ''}?ref=${branch}`;
+    if (rawM) {
+      const [, owner, repo, branch, path] = rawM;
+      return `https://api.github.com/repos/${owner}/${repo}/contents/${path ?? ''}?ref=${branch}`;
+    }
+
+    // Format 2: github.com/owner/repo/tree/branch/path
+    const treeM = baseUrl.match(
+      /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)(?:\/(.+))?$/
+    );
+    if (treeM) {
+      const [, owner, repo, branch, path] = treeM;
+      return `https://api.github.com/repos/${owner}/${repo}/contents/${path ?? ''}?ref=${branch}`;
+    }
+
+    return null;
   }
 
   /**
