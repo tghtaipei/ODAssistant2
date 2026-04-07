@@ -449,57 +449,27 @@ export class EditorUI {
   }
 
   /**
-   * Render one recipient card inside a 正本/副本 list.
+   * Render one recipient item inside 副本 list — only the name field.
    * @private
    */
   _appendRecipientItem(listEl, parentEl, recipEl, tagName) {
-    const card = el('div', CLS.RECIPIENT_CARD);
+    const item = el('div', CLS.LIST_ITEM);
 
-    const header = el('div', 'editor-recipient-card__header');
-    const titleSpan = el('span', 'editor-recipient-card__title', `${tagName}受文者`);
-    header.appendChild(titleSpan);
+    // Bind to the direct text node of <全銜> (text before <傳送方式> child)
+    const input = this._createBoundDirectTextInput(recipEl);
+    item.appendChild(input);
 
-    const removeBtn = el('button', CLS.BTN_REMOVE, '✕ 移除');
+    const removeBtn = el('button', CLS.BTN_REMOVE, '✕');
     removeBtn.type  = 'button';
+    removeBtn.title = `移除此${tagName}受文者`;
     removeBtn.addEventListener('click', () => {
       parentEl.removeChild(recipEl);
-      card.remove();
+      item.remove();
       this._notifyChange();
     });
-    header.appendChild(removeBtn);
-    card.appendChild(header);
+    item.appendChild(removeBtn);
 
-    const fields = el('div', CLS.NESTED);
-
-    // Name text content of 全銜 (primary field)
-    this._appendField(fields, '受文者名稱', this._createBoundTextInput(recipEl));
-
-    // 發文方式 attribute
-    this._appendField(fields, '發文方式', this._createBoundAttrInput(recipEl, '發文方式'));
-
-    // 傳送方式
-    const chuanSongEl = this._getOrCreate(recipEl, '傳送方式');
-    this._appendField(fields, '傳送方式', this._createBoundTextInput(chuanSongEl));
-
-    // 郵遞區號
-    const youdiEl = this._getOrCreate(recipEl, '郵遞區號');
-    this._appendField(fields, '郵遞區號', this._createBoundTextInput(youdiEl));
-
-    // 地址
-    const addrEl = this._getOrCreate(recipEl, '地址');
-    this._appendField(fields, '地址', this._createBoundTextInput(addrEl));
-
-    // 通訊錄名稱 attributes
-    const tongxuEl = this._getOrCreate(recipEl, '通訊錄名稱');
-    this._appendField(fields, '通訊錄機關代碼', this._createBoundAttrInput(tongxuEl, '機關代碼'));
-    this._appendField(fields, '通訊錄單位代碼', this._createBoundAttrInput(tongxuEl, '單位代碼'));
-
-    // 含附件
-    const hanfujianEl = this._getOrCreate(recipEl, '含附件');
-    this._appendField(fields, '含附件', this._createBoundTextInput(hanfujianEl));
-
-    card.appendChild(fields);
-    listEl.appendChild(card);
+    listEl.appendChild(item);
   }
 
   /**
@@ -570,6 +540,48 @@ export class EditorUI {
     wrapper.appendChild(inputEl);
     parent.appendChild(wrapper);
     return wrapper;
+  }
+
+  /**
+   * Create an `<input>` bound to the **direct text node** of `xmlElement`.
+   *
+   * Unlike `_createBoundTextInput` which uses `textContent` (includes all
+   * descendant text), this method reads and writes only the first TEXT_NODE
+   * child of `xmlElement`.
+   *
+   * Example: `<全銜 發文方式="紙本">臺北市議會○○議員<傳送方式/></全銜>`
+   *   → reads/writes "臺北市議會○○議員" only.
+   *
+   * @private
+   * @param {Element} xmlElement
+   * @returns {HTMLInputElement}
+   */
+  _createBoundDirectTextInput(xmlElement) {
+    const input = /** @type {HTMLInputElement} */ (document.createElement('input'));
+    input.className = CLS.INPUT;
+    input.type = 'text';
+
+    // Find or create the direct text node.
+    let textNode = null;
+    for (const child of xmlElement.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        textNode = child;
+        break;
+      }
+    }
+    if (!textNode) {
+      textNode = this._xmlDoc.createTextNode('');
+      xmlElement.insertBefore(textNode, xmlElement.firstChild);
+    }
+
+    input.value = (textNode.nodeValue ?? '').trim();
+
+    input.addEventListener('input', () => {
+      textNode.nodeValue = input.value;
+      this._notifyChange();
+    });
+
+    return input;
   }
 
   /**
