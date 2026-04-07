@@ -50,9 +50,14 @@ export class DataRepository {
     this._legislators = new Set();
 
     /**
-     * Map from legislator name → group string (e.g. `'第3組'`).
+     * 二層 Map：外層 key = 部門/會議類型（如「定期大會」、「警政衛生部門」），
+     * 內層 key = 議員姓名，value = 組別（如「第1組」）。
+     *
+     * 結構：Map<meetingType, Map<name, group>>
+     *
+     * 同一位議員在不同會議類型可能屬於不同組別，因此以會議類型作為外層索引。
      * @private
-     * @type {Map<string, string>}
+     * @type {Map<string, Map<string, string>>}
      */
     this._groups = new Map();
   }
@@ -132,13 +137,24 @@ export class DataRepository {
   }
 
   /**
-   * Return the group string for a legislator, or `null` if unknown.
+   * 查詢特定議員在「指定會議類型」下的組別。
    *
-   * @param {string} name - Name only, without the `議員` suffix.
-   * @returns {string|null} A string like `'第3組'`, or `null`.
+   * @param {string} name        - 議員姓名（不含「議員」二字）。
+   * @param {string} meetingType - 會議/部門類型，對應 CSV 第一欄（如「定期大會」、「警政衛生部門」）。
+   * @returns {string|null} 組別字串（如「第3組」），若查無資料則回傳 null。
    */
-  getLegislatorGroup(name) {
-    return this._groups.get((name ?? '').trim()) ?? null;
+  getLegislatorGroupByType(name, meetingType) {
+    return this._groups.get(meetingType)?.get((name ?? '').trim()) ?? null;
+  }
+
+  /**
+   * 取得所有已載入的會議/部門類型清單（即 CSV 第一欄的所有不重複值）。
+   * GroupValidator 用此清單在文件主旨中搜尋對應的會議類型。
+   *
+   * @returns {string[]}
+   */
+  getAllMeetingTypes() {
+    return [...this._groups.keys()];
   }
 
   /**
@@ -148,33 +164,6 @@ export class DataRepository {
    */
   getAllLegislators() {
     return [...this._legislators].sort();
-  }
-
-  /**
-   * Return all groups with their associated legislators.
-   *
-   * Groups are ordered by their numeric suffix; legislators within each group
-   * are in insertion order (preserving the original CSV order).
-   *
-   * @returns {GroupEntry[]}
-   */
-  getAllGroups() {
-    /** @type {Map<string, string[]>} group → legislators */
-    const byGroup = new Map();
-
-    for (const [legislator, group] of this._groups) {
-      if (!byGroup.has(group)) byGroup.set(group, []);
-      byGroup.get(group).push(legislator);
-    }
-
-    // Sort groups numerically by the digit(s) embedded in the group name.
-    return [...byGroup.entries()]
-      .sort(([a], [b]) => {
-        const numA = parseInt((a.match(/\d+/) ?? ['0'])[0], 10);
-        const numB = parseInt((b.match(/\d+/) ?? ['0'])[0], 10);
-        return numA - numB;
-      })
-      .map(([group, legislators]) => ({ group, legislators }));
   }
 
   // ---------------------------------------------------------------------------
@@ -196,14 +185,17 @@ export class DataRepository {
   /**
    * Save the current in-memory group mapping to IndexedDB.
    *
+   * 序列化格式：Array<[meetingType, Array<[name, group]>]>
+   * 例：[["定期大會", [["洪健益","第1組"]]], ["警政衛生部門", [["洪健益","第2組"]]]]
+   *
    * @returns {Promise<void>}
    */
   async persistGroups() {
-    // Serialise the Map as an array of [name, group] pairs.
-    await put(STORES.DATA, {
-      id: KEY_GROUPS,
-      payload: [...this._groups.entries()],
-    });
+    const payload = [...this._groups.entries()].map(([type, nameMap]) => [
+      type,
+      [...nameMap.entries()],
+    ]);
+    await put(STORES.DATA, { id: KEY_GROUPS, payload });
   }
 
   // ---------------------------------------------------------------------------
@@ -234,7 +226,11 @@ export class DataRepository {
   }
 
   /**
-   * Load groups from IndexedDB (stored as an array of [name, group] pairs).
+   * Load groups from IndexedDB.
+   *
+   * 支援兩種格式（向下相容）：
+   *   新格式：Array<[meetingType, Array<[name, group]>]>  ← persistGroups() 寫入的格式
+   *   舊格式：Array<[name, group]>  ← 舊版寫入，自動轉換為 meetingType='(未分類)' 的單一類型
    * @private
    */
   async _loadGroupsFromDB() {
@@ -243,12 +239,27 @@ export class DataRepository {
       if (!record?.payload) return;
 
       const payload = record.payload;
+      if (!Array.isArray(payload) || payload.length === 0) return;
 
-      if (Array.isArray(payload)) {
-        // Stored as array of [legislatorName, groupString] pairs.
-        this._groups = new Map(payload.filter(
-          (entry) => Array.isArray(entry) && entry.length >= 2
-        ));
+      // 判斷是新格式還是舊格式：
+      // 新格式：第一個元素的 [1] 也是陣列（e.g. ["定期大會", [...]]）
+      // 舊格式：第一個元素是 [name, group] 兩個字串
+      const isNewFormat =
+        Array.isArray(payload[0]) &&
+        Array.isArray(payload[0][1]);
+
+      if (isNewFormat) {
+        this._groups = new Map(
+          payload.map(([type, pairs]) => [type, new Map(pairs)])
+        );
+      } else {
+        // 舊格式：[name, group] pairs，放入一個虛擬類型
+        const fallback = new Map(
+          payload.filter((e) => Array.isArray(e) && e.length >= 2)
+        );
+        if (fallback.size > 0) {
+          this._groups = new Map([['(未分類)', fallback]]);
+        }
       }
     } catch (err) {
       console.error('[DataRepository] 載入組別資料失敗：', err);
@@ -256,17 +267,24 @@ export class DataRepository {
   }
 
   /**
-   * Parse 「議員分組.csv」 content into legislators Set and groups Map.
+   * Parse 「議員分組.csv」 content into legislators Set and a two-level groups Map.
    *
-   * Format: 部門,組別號碼,姓名
-   * The group string stored is `第N組` where N is column 1.
+   * CSV 格式（無標題列）：
+   *   部門/會議類型, 組別號碼, 姓名
+   *   定期大會,1,洪健益
+   *   警政衛生部門,2,洪健益
+   *
+   * 同一位議員可在多列出現（每種會議類型各一列）；
+   * 最終回傳的 groups 結構為：
+   *   Map<meetingType, Map<name, `第N組`>>
    *
    * @private
    * @param {string} csv
-   * @returns {{ legislators: Set<string>, groups: Map<string, string> }}
+   * @returns {{ legislators: Set<string>, groups: Map<string, Map<string, string>> }}
    */
   _parseMemberGroupCsv(csv) {
     const legislators = new Set();
+    /** @type {Map<string, Map<string, string>>} */
     const groups = new Map();
 
     if (!csv) return { legislators, groups };
@@ -276,13 +294,18 @@ export class DataRepository {
     for (const line of lines) {
       const cols = line.split(',').map((c) => c.trim());
       if (cols.length < 3) continue;
-      // cols[0] = 部門 (ignored), cols[1] = 組別號碼, cols[2] = 姓名
-      const groupNum = cols[1];
-      const name     = cols[2];
-      if (!name || !groupNum) continue;
+
+      const meetingType = cols[0]; // 部門/會議類型，如「定期大會」、「警政衛生部門」
+      const groupNum    = cols[1]; // 組別號碼，如「1」
+      const name        = cols[2]; // 議員姓名
+
+      if (!meetingType || !groupNum || !name) continue;
 
       legislators.add(name);
-      groups.set(name, `第${groupNum}組`);
+
+      // 確保外層 Map 有此 meetingType 的內層 Map
+      if (!groups.has(meetingType)) groups.set(meetingType, new Map());
+      groups.get(meetingType).set(name, `第${groupNum}組`);
     }
 
     return { legislators, groups };
