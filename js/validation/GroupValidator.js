@@ -101,11 +101,27 @@ export class GroupValidator extends ValidatorBase {
     const subjectEl = xmlDoc.getElementsByTagName('主旨')[0];
     const subjectText = subjectEl ? (subjectEl.textContent ?? '') : '';
 
+    console.debug('[GroupValidator] 主旨文字：', subjectText);
+    console.debug('[GroupValidator] 已知會議類型：', meetingTypes);
+
     // 找出主旨中命中的所有已知會議類型
     const matched = meetingTypes.filter(type => subjectText.includes(type));
 
-    if (matched.length !== 1) {
-      // 找到 0 個或 2 個以上，無法確定類型，跳過驗證避免誤報
+    console.debug('[GroupValidator] 命中的會議類型：', matched);
+
+    if (matched.length === 0) {
+      // 議員名冊已載入，但主旨中找不到任何已知的會議/部門類型。
+      // 可能原因：CSV 未包含與主旨對應的類型（例如主旨有「定期大會」但 CSV 僅有部門名稱）。
+      results.push({
+        field: '組別',
+        message: `主旨中未包含議員分組 CSV 中的任何已知會議/部門類型（已知類型：${meetingTypes.join('、')}），無法核對組別，請確認 CSV 格式是否正確。`,
+      });
+      return results;
+    }
+
+    if (matched.length > 1) {
+      // 主旨同時命中多個已知類型，無法確定應套用哪組資料，跳過避免誤報。
+      console.warn('[GroupValidator] 命中多個類型，跳過：', matched);
       return results;
     }
 
