@@ -25,6 +25,11 @@ const SETTINGS_BASE_URL = 'syncBaseUrl';
 const MEMBER_CSV_NAME = '議員分組.csv';
 
 /**
+ * 預設範本來源，首次使用時自動套用（使用者可在設定中覆寫）。
+ */
+const DEFAULT_BASE_URL = 'https://github.com/tghtaipei/od-templates/tree/main/templates';
+
+/**
  * @typedef {Object} SyncItemTemplate
  * @property {'template'} type
  * @property {string}     filename
@@ -62,13 +67,13 @@ export class DriveSync {
   // ---------------------------------------------------------------------------
 
   /**
-   * @returns {Promise<{baseUrl: string}|null>}
+   * @returns {Promise<{baseUrl: string, isDefault: boolean}>}
    */
   async getConfig() {
     const record = await get(STORES.SETTINGS, SETTINGS_BASE_URL);
-    const baseUrl = (record?.value ?? '').trim().replace(/\/$/, '');
-    if (!baseUrl) return null;
-    return { baseUrl };
+    const stored  = (record?.value ?? '').trim().replace(/\/$/, '');
+    const baseUrl = stored || DEFAULT_BASE_URL;
+    return { baseUrl, isDefault: !stored };
   }
 
   /**
@@ -165,10 +170,6 @@ export class DriveSync {
       config = await this.getConfig();
     } catch (err) {
       return { updated: false, items, error: `讀取設定失敗：${err.message}` };
-    }
-
-    if (!config) {
-      return { updated: false, items, error: null };
     }
 
     const { baseUrl } = config;

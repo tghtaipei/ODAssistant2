@@ -87,14 +87,17 @@ async function _boot() {
     templateStore.init(),
   ]);
 
-  // 4. Background sync
+  // 4. Background sync (uses default URL if not configured)
   _syncInBackground();
 
   // 5. Check draft and show template selector
   const draft = await draftManager.load();
   openTemplateSelector(draft);
 
-  // 6. Wire toolbar
+  // 6. Show welcome modal (unless user dismissed it)
+  _showWelcomeIfNeeded();
+
+  // 7. Wire toolbar
   _wireToolbar();
 }
 
@@ -141,6 +144,22 @@ async function _syncInBackground() {
     console.error('[app] 同步錯誤：', err);
     if (statusEl) statusEl.textContent = '同步錯誤';
   }
+}
+
+// ─── Welcome modal ───────────────────────────────────────────────────────────
+
+/** localStorage key that suppresses the welcome modal when set to '1'. */
+const LS_WELCOME_DISMISSED = 'odassistant-welcome-dismissed';
+
+/**
+ * Show the welcome modal unless the user previously checked "下次不再顯示".
+ */
+function _showWelcomeIfNeeded() {
+  if (localStorage.getItem(LS_WELCOME_DISMISSED) === '1') return;
+  const modal = document.getElementById('modal-welcome');
+  if (!modal) return;
+  modal.classList.add('modal--open');
+  modal.removeAttribute('hidden');
 }
 
 // ─── Template selection modal ────────────────────────────────────────────────
@@ -212,7 +231,8 @@ export async function openSettings() {
   const config = await driveSync.getConfig();
   const baseUrlInput = /** @type {HTMLInputElement|null} */ (document.getElementById('settings-base-url'));
 
-  if (baseUrlInput) baseUrlInput.value = config?.baseUrl ?? '';
+  // Show current effective URL (stored value or default)
+  if (baseUrlInput) baseUrlInput.value = config.baseUrl;
 
   modal.classList.add('modal--open');
   modal.removeAttribute('hidden');
@@ -450,6 +470,19 @@ function _wireToolbar() {
       } catch (err) {
         showNotification(`設定儲存失敗：${err.message}`, 'error');
       }
+    });
+  }
+
+  // Welcome modal — "開始使用" button
+  const welcomeCloseBtn = document.getElementById('btn-welcome-close');
+  if (welcomeCloseBtn) {
+    welcomeCloseBtn.addEventListener('click', () => {
+      const chk = /** @type {HTMLInputElement|null} */ (document.getElementById('chk-welcome-dismiss'));
+      if (chk?.checked) {
+        localStorage.setItem(LS_WELCOME_DISMISSED, '1');
+      }
+      const modal = document.getElementById('modal-welcome');
+      if (modal) _closeModal(modal);
     });
   }
 

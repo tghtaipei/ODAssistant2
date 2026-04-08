@@ -45,16 +45,10 @@
      ==================================================== -->
 <main id="main-content">
 
-  <!-- Welcome / empty state shown before a template is loaded -->
-  <div id="welcome-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem;padding:5rem 1rem;text-align:center;">
-    <div style="font-size:3.5rem">📋</div>
-    <h2 style="font-size:1.3rem;color:var(--gray-700)">歡迎使用公文寫作輔助系統</h2>
-    <p style="color:var(--gray-500);max-width:400px">
-      請點選上方「📂 選擇範本」開始編輯，或等候系統自動還原上次草稿。
-    </p>
-    <p style="color:var(--gray-400);font-size:0.8rem">
-      所有公文資料僅儲存於您的瀏覽器本機，不會上傳至任何伺服器。
-    </p>
+  <!-- Empty state placeholder (shown before a template is loaded) -->
+  <div id="welcome-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:5rem 1rem;text-align:center;">
+    <div style="font-size:3rem;opacity:.35">📋</div>
+    <p style="color:var(--gray-400);font-size:0.9rem">請選擇範本或還原草稿以開始編輯。</p>
   </div>
 
   <!-- Editor mounts here -->
@@ -170,6 +164,38 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" id="btn-validation-cancel">取消，繼續編輯</button>
       <button class="btn btn-primary" id="btn-validation-confirm">確認，仍要匯出</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====================================================
+     Modal: Welcome / Onboarding
+     ==================================================== -->
+<div class="modal" id="modal-welcome" hidden aria-modal="true" role="dialog" aria-labelledby="modal-welcome-title">
+  <div class="modal-box sm">
+
+    <div class="modal-header">
+      <h2 id="modal-welcome-title">歡迎使用公文寫作輔助系統</h2>
+      <button class="modal-close" data-close-modal="modal-welcome" title="關閉" aria-label="關閉">✕</button>
+    </div>
+
+    <div class="modal-body" style="text-align:center;padding:1.75rem 1.5rem">
+      <div style="font-size:3.5rem;margin-bottom:1rem">📋</div>
+      <p style="color:var(--gray-600);line-height:1.7;margin-bottom:0.75rem">
+        請點選上方「📂 選擇範本」開始編輯，或等候系統自動還原上次草稿。
+      </p>
+      <p style="color:var(--gray-400);font-size:0.8rem;line-height:1.6">
+        所有公文資料僅儲存於您的瀏覽器本機，不會上傳至任何伺服器。
+      </p>
+    </div>
+
+    <div class="modal-footer" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem">
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:var(--gray-500);cursor:pointer;user-select:none">
+        <input type="checkbox" id="chk-welcome-dismiss" />
+        下次不再顯示
+      </label>
+      <button class="btn btn-primary" id="btn-welcome-close">開始使用</button>
     </div>
 
   </div>
