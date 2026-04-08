@@ -42,6 +42,18 @@ export class PlaceholderValidator extends ValidatorBase {
       }
     }
 
+    // 檢查主旨是否含有「00」數字佔位符（如「第00次」、「第00組」）
+    const subjectEls = xmlDoc.getElementsByTagName('主旨');
+    for (const el of subjectEls) {
+      if (/00/.test(el.textContent ?? '')) {
+        results.push({
+          field: '主旨',
+          message: '主旨仍有未填寫的數字佔位符「00」（如「第00次」、「第00組」），請確認是否匯出！',
+        });
+        break;
+      }
+    }
+
     return results;
   }
 }

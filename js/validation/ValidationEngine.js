@@ -11,10 +11,11 @@
  *  - {@link CaseType81Validator} → `'8-1'`
  */
 
-import { LegislatorValidator } from './LegislatorValidator.js';
-import { GroupValidator }       from './GroupValidator.js';
-import { CaseType81Validator }  from './CaseType81Validator.js';
-import { PlaceholderValidator } from './PlaceholderValidator.js';
+import { LegislatorValidator }  from './LegislatorValidator.js';
+import { GroupValidator }        from './GroupValidator.js';
+import { CaseType81Validator }   from './CaseType81Validator.js';
+import { PlaceholderValidator }  from './PlaceholderValidator.js';
+import { ExplanationValidator }  from './ExplanationValidator.js';
 
 /**
  * @typedef {import('./ValidatorBase.js').ValidationResult} ValidationResult
@@ -53,6 +54,7 @@ export class ValidationEngine {
 
     // Register built-in validators.
     this.register(WILDCARD, new PlaceholderValidator());
+    this.register(WILDCARD, new ExplanationValidator());
     this.register(WILDCARD, new LegislatorValidator());
     this.register(WILDCARD, new GroupValidator());
     this.register('8-1',    new CaseType81Validator());

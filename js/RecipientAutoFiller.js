@@ -191,14 +191,7 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
     return { skipped: true, reason: '無法從主旨判斷會議/部門類型，副本未自動更新' };
   }
 
-  // ── 步驟 2：從主旨取得組別 ────────────────────────────────────
-  const groupMatch = GROUP_RE.exec(subjectText);
-  if (!groupMatch) {
-    return { skipped: true, reason: '主旨中未找到「第N組」，副本未自動更新' };
-  }
-  const groupLabel = `第${groupMatch[1]}組`;
-
-  // ── 步驟 3：驗證主旨中的議員姓名與組別是否一致 ───────────────
+  // ── 步驟 2：從主旨擷取議員姓名 ───────────────────────────────
   const maxNameLen = Math.max(...legislators.map(n => n.length));
   let subjectLegislator = null;
   let searchFrom = 0;
@@ -214,6 +207,20 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
     searchFrom = idx + 2;
   }
 
+  // ── 步驟 3：從主旨取得組別 ────────────────────────────────────
+  const groupMatch = GROUP_RE.exec(subjectText);
+
+  // 【Rule 4】無組別但有議員姓名 → 只新增該議員一人至副本第一位
+  if (!groupMatch) {
+    if (!subjectLegislator) {
+      return { skipped: true, reason: '主旨中未找到組別或議員姓名，副本未自動更新' };
+    }
+    return _fillSingleLegislator(xmlDoc, subjectLegislator);
+  }
+
+  const groupLabel = `第${groupMatch[1]}組`;
+
+  // ── 步驟 4：驗證主旨中的議員姓名與組別是否一致 ───────────────
   if (subjectLegislator) {
     const actualGroup = dataRepo.getLegislatorGroupByType(subjectLegislator, meetingType);
     if (actualGroup && actualGroup !== groupLabel) {
@@ -227,7 +234,7 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
     }
   }
 
-  // ── 步驟 4：取得該組別所有議員 ────────────────────────────────
+  // ── 步驟 5：取得該組別所有議員 ────────────────────────────────
   const groupMembers = dataRepo.getLegislatorsByGroup(meetingType, groupLabel);
   if (groupMembers.length === 0) {
     return {
@@ -236,7 +243,7 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
     };
   }
 
-  // ── 步驟 5：更新 <副本> XML ────────────────────────────────────
+  // ── 步驟 6：更新 <副本> XML ────────────────────────────────────
   // 順序：① 主旨中提到的議員　② 同組其他議員　③ 原範本內非議員受文者
   const fubenEl = xmlDoc.getElementsByTagName('副本')[0];
   if (!fubenEl) {
@@ -278,5 +285,48 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
     meetingType,
     groupLabel,
     addedCount:  groupMembers.length,
+  };
+}
+
+// ─── 內部輔助：單一議員模式（無組別）────────────────────────────
+
+/**
+ * 主旨中只有議員姓名、沒有組別時，只將該議員新增至副本第一位。
+ * 移除所有現有的議員型 <全銜>，保留非議員受文者。
+ *
+ * @param {Document} xmlDoc
+ * @param {string}   name  - 議員姓名。
+ * @returns {AutoFillResult}
+ */
+function _fillSingleLegislator(xmlDoc, name) {
+  const fubenEl = xmlDoc.getElementsByTagName('副本')[0];
+  if (!fubenEl) {
+    return { skipped: true, reason: '文件中未找到 <副本> 區塊，副本未自動更新' };
+  }
+
+  // 保留非議員受文者
+  const nonLegislatorChildren = Array.from(fubenEl.childNodes).filter(
+    child =>
+      child.nodeType === Node.ELEMENT_NODE &&
+      /** @type {Element} */ (child).tagName === '全銜' &&
+      !isLegislatorRecipient(/** @type {Element} */ (child))
+  );
+
+  // 移除所有 <全銜>
+  Array.from(fubenEl.childNodes)
+    .filter(child => child.nodeType === Node.ELEMENT_NODE && /** @type {Element} */ (child).tagName === '全銜')
+    .forEach(child => fubenEl.removeChild(child));
+
+  // 新增議員至第一位，再附加非議員受文者
+  fubenEl.appendChild(createLegislatorElement(xmlDoc, name));
+  for (const child of nonLegislatorChildren) {
+    fubenEl.appendChild(child);
+  }
+
+  return {
+    skipped:    false,
+    failed:     false,
+    reason:     `已自動更新副本：僅新增「${name}議員」至第一位`,
+    addedCount: 1,
   };
 }
