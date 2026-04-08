@@ -80,14 +80,24 @@ export class ExplanationValidator extends ValidatorBase {
     /** @type {import('./ValidatorBase.js').ValidationResult[]} */
     const results = [];
 
+    // 找出 段名 含「說明」的 <段落> 元素，取其第一個 <條列> 子元素
     const paragraphs = xmlDoc.getElementsByTagName('段落');
-    if (paragraphs.length === 0) return results;
+    let duanEl = null;
+    for (let i = 0; i < paragraphs.length; i++) {
+      if ((paragraphs[i].getAttribute('段名') ?? '').includes('說明')) {
+        duanEl = paragraphs[i];
+        break;
+      }
+    }
+    // fallback：若找不到帶屬性的 <段落>，取第一個 <段落>
+    if (!duanEl && paragraphs.length > 0) duanEl = paragraphs[0];
+    if (!duanEl) return results;
 
-    const firstPara     = paragraphs[0];
-    const firstParaText = firstPara.textContent ?? '';
+    const firstItem = duanEl.getElementsByTagName('條列')[0];
+    const firstItemText = firstItem ? (firstItem.textContent ?? '') : (duanEl.textContent ?? '');
 
     // ── 規則 1：日期佔位符 ──────────────────────────────────────
-    if (ZERO_DATE_RE.test(firstParaText)) {
+    if (ZERO_DATE_RE.test(firstItemText)) {
       results.push({
         field:   '說明',
         message: '說明第一項的日期仍有未填寫的佔位符（如「00年」、「00月」、「00日」），請確認是否匯出！',
@@ -100,8 +110,8 @@ export class ExplanationValidator extends ValidatorBase {
       const subjectEl   = xmlDoc.getElementsByTagName('主旨')[0];
       const subjectText = subjectEl ? (subjectEl.textContent ?? '') : '';
 
-      const subjectLegislator     = findLegislatorInText(subjectText,   legislators);
-      const explanationLegislator = findLegislatorInText(firstParaText, legislators);
+      const subjectLegislator     = findLegislatorInText(subjectText,    legislators);
+      const explanationLegislator = findLegislatorInText(firstItemText, legislators);
 
       if (subjectLegislator && explanationLegislator && subjectLegislator !== explanationLegislator) {
         results.push({
