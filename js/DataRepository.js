@@ -253,13 +253,9 @@ export class DataRepository {
           payload.map(([type, pairs]) => [type, new Map(pairs)])
         );
       } else {
-        // 舊格式：[name, group] pairs，放入一個虛擬類型
-        const fallback = new Map(
-          payload.filter((e) => Array.isArray(e) && e.length >= 2)
-        );
-        if (fallback.size > 0) {
-          this._groups = new Map([['(未分類)', fallback]]);
-        }
+        // 舊格式（單層 [[name, group], ...]）：資料來自舊版程式，無法得知會議類型。
+        // 直接丟棄；待下次同步重新下載 CSV 後，會以新格式正確儲存。
+        console.warn('[DataRepository] 偵測到舊版組別格式，已捨棄，等待重新同步。');
       }
     } catch (err) {
       console.error('[DataRepository] 載入組別資料失敗：', err);

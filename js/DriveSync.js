@@ -12,8 +12,11 @@
 
 import { get, put, STORES } from './db.js';
 
-/** IndexedDB key for caching file SHAs (to detect changes). */
-const SYNC_META_KEY = 'syncMeta';
+/**
+ * IndexedDB key for caching file SHAs (to detect changes).
+ * 版本號隨格式升級遞增，舊 key 會被捨棄，強制全部重新下載。
+ */
+const SYNC_META_KEY = 'syncMeta_v2';
 
 /** Settings key. */
 const SETTINGS_BASE_URL = 'syncBaseUrl';
