@@ -314,20 +314,7 @@ export class EditorUI {
       }
     }
 
-    // 段名 attribute input
-    this._appendField(sec, '段名', this._createBoundAttrInput(duanEl, '段名'));
-
-    // 文字 inside 段落 (paragraph-level intro text, optional)
-    const introWenziEl = Array.from(duanEl.childNodes)
-      .find((n) => n.nodeType === Node.ELEMENT_NODE && n.nodeName === '文字');
-    if (introWenziEl) {
-      this._appendField(sec, '段落說明文字', this._createBoundTextInput(/** @type {Element} */(introWenziEl), true));
-    }
-
-    // Repeatable 條列 items
-    const itemsLabel = el('div', 'editor-field__label', '條列項目');
-    sec.appendChild(itemsLabel);
-
+    // 條列項目清單（不顯示段名、段落說明文字、條列項目等標籤）
     const listEl = el('div', CLS.LIST);
     sec.appendChild(listEl);
 
@@ -369,15 +356,19 @@ export class EditorUI {
     const textarea = this._createBoundTextInput(wenziEl, true);
     item.appendChild(textarea);
 
-    const removeBtn = el('button', CLS.BTN_REMOVE, '✕');
-    removeBtn.type  = 'button';
-    removeBtn.title = '移除此條列';
-    removeBtn.addEventListener('click', () => {
-      duanEl.removeChild(itemEl);
-      item.remove();
-      this._notifyChange();
-    });
-    item.appendChild(removeBtn);
+    // 第一個條列項目不顯示刪除按鈕（listEl 尚無子項表示這是第一筆）
+    const isFirst = listEl.childElementCount === 0;
+    if (!isFirst) {
+      const removeBtn = el('button', CLS.BTN_REMOVE, '✕');
+      removeBtn.type  = 'button';
+      removeBtn.title = '移除此條列';
+      removeBtn.addEventListener('click', () => {
+        duanEl.removeChild(itemEl);
+        item.remove();
+        this._notifyChange();
+      });
+      item.appendChild(removeBtn);
+    }
 
     listEl.appendChild(item);
   }

@@ -334,6 +334,7 @@ async function _loadTemplate(filename) {
     _templateFilename = filename;
 
     editorUI.render(xmlDoc);
+    document.getElementById('welcome-screen')?.style.setProperty('display', 'none');
     draftManager.stopAutoSave();
     draftManager.startAutoSave(() => _getEditorState());
 
@@ -355,6 +356,7 @@ async function _loadFromDraft(draft) {
     _templateFilename = draft.templateFilename;
 
     editorUI.render(xmlDoc);
+    document.getElementById('welcome-screen')?.style.setProperty('display', 'none');
     draftManager.stopAutoSave();
     draftManager.startAutoSave(() => _getEditorState());
 
