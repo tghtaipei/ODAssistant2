@@ -383,15 +383,14 @@ export class EditorUI {
   }
 
   /**
-   * Section 5 & 6: 正本 / 副本
+   * Section 6: 副本（唯讀，受文者由儲存草稿時自動填入）
    * @private
    * @param {HTMLElement} container
    * @param {Element} rootEl
-   * @param {string} tagName - '正本' or '副本'
+   * @param {string} tagName - 目前僅使用 '副本'
    */
   _renderRecipients(container, rootEl, tagName) {
-    const sectionId = tagName === '正本' ? SEC.ZHENGBEN : SEC.FUBEN;
-    const sec = this._makeSection(container, tagName, sectionId);
+    const sec = this._makeSection(container, tagName, SEC.FUBEN);
 
     let parentEl = rootEl.getElementsByTagName(tagName)[0];
     if (!parentEl) {
@@ -399,75 +398,52 @@ export class EditorUI {
       rootEl.appendChild(parentEl);
     }
 
+    // 說明文字：不開放手動新增，由系統自動填入
+    const note = document.createElement('p');
+    note.className = 'editor-section__note';
+    note.textContent = '副本受文者將於儲存草稿時依主旨組別自動填入。如有其他特殊之副本受文者，請匯入公文系統後自行手動增加。';
+    sec.appendChild(note);
+
     const listEl = el('div', CLS.LIST);
     sec.appendChild(listEl);
 
-    // Render existing 全銜 recipient elements (direct children of 正本/副本)
+    // 顯示現有 <全銜>（唯讀）
     const existing = Array.from(parentEl.getElementsByTagName('全銜'))
       .filter((e) => e.parentElement === parentEl);
 
     if (existing.length === 0) {
-      const newRecip = this._createRecipientElement();
-      parentEl.appendChild(newRecip);
-      this._appendRecipientItem(listEl, parentEl, newRecip, tagName);
+      const empty = document.createElement('p');
+      empty.className = 'editor-section__empty';
+      empty.textContent = '（尚未填入，請先完成主旨後儲存草稿）';
+      listEl.appendChild(empty);
     } else {
       existing.forEach((recipEl) => {
-        this._appendRecipientItem(listEl, parentEl, recipEl, tagName);
+        this._appendRecipientReadOnly(listEl, recipEl);
       });
     }
-
-    const addBtn = el('button', CLS.BTN_ADD, `＋ 新增${tagName}受文者`);
-    addBtn.type = 'button';
-    addBtn.addEventListener('click', () => {
-      const newRecip = this._createRecipientElement();
-      parentEl.appendChild(newRecip);
-      this._appendRecipientItem(listEl, parentEl, newRecip, tagName);
-      this._notifyChange();
-    });
-    sec.appendChild(addBtn);
+    // 無新增按鈕 — 副本由自動填入機制控制
   }
 
   /**
-   * Create a new 全銜 element with standard child structure.
-   * @private
-   * @returns {Element}
-   */
-  _createRecipientElement() {
-    const doc = this._xmlDoc;
-    const quanxEl = doc.createElement('全銜');
-    quanxEl.setAttribute('發文方式', '');
-
-    const subEls = ['傳送方式', '郵遞區號', '地址', '含附件'];
-    subEls.forEach((tag) => quanxEl.appendChild(doc.createElement(tag)));
-
-    const tongxuEl = doc.createElement('通訊錄名稱');
-    tongxuEl.setAttribute('機關代碼', '');
-    tongxuEl.setAttribute('單位代碼', '');
-    quanxEl.appendChild(tongxuEl);
-
-    return quanxEl;
-  }
-
-  /**
-   * Render one recipient item inside 副本 list — only the name field.
+   * 以唯讀方式呈現一筆副本受文者。
    * @private
    */
-  _appendRecipientItem(listEl, parentEl, recipEl, tagName) {
+  _appendRecipientReadOnly(listEl, recipEl) {
     const item = el('div', CLS.LIST_ITEM);
 
-    // Bind to the direct text node of <全銜> (text before <傳送方式> child)
-    const input = this._createBoundDirectTextInput(recipEl);
-    item.appendChild(input);
+    // 讀取 <全銜> 的直接文字節點（受文者名稱）
+    let nameText = '';
+    for (const child of recipEl.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        nameText = (child.nodeValue ?? '').trim();
+        break;
+      }
+    }
 
-    const removeBtn = el('button', CLS.BTN_REMOVE, '✕');
-    removeBtn.type  = 'button';
-    removeBtn.title = `移除此${tagName}受文者`;
-    removeBtn.addEventListener('click', () => {
-      parentEl.removeChild(recipEl);
-      item.remove();
-      this._notifyChange();
-    });
-    item.appendChild(removeBtn);
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'editor-field__readonly-value';
+    nameSpan.textContent = nameText || '（未填寫）';
+    item.appendChild(nameSpan);
 
     listEl.appendChild(item);
   }

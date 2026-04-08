@@ -158,6 +158,23 @@ export class DataRepository {
   }
 
   /**
+   * 取得指定會議類型與組別的所有議員姓名。
+   *
+   * @param {string} meetingType - 會議/部門類型（CSV 第一欄），如「市政總質詢」。
+   * @param {string} groupLabel  - 組別字串，如「第1組」。
+   * @returns {string[]} 議員姓名陣列；若查無資料則回傳空陣列。
+   */
+  getLegislatorsByGroup(meetingType, groupLabel) {
+    const typeMap = this._groups.get(meetingType);
+    if (!typeMap) return [];
+    const result = [];
+    for (const [name, grp] of typeMap.entries()) {
+      if (grp === groupLabel) result.push(name);
+    }
+    return result;
+  }
+
+  /**
    * Return all known legislator names as a sorted array.
    *
    * @returns {string[]}

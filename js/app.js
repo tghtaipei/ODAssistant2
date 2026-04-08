@@ -11,15 +11,16 @@
  *  6. Wire toolbar buttons (儲存草稿, 匯出, 設定)
  */
 
-import { openDB }             from './db.js';
-import { parse }              from './DIParser.js';
-import { DataRepository }     from './DataRepository.js';
-import { TemplateStore }      from './TemplateStore.js';
-import { DriveSync }          from './DriveSync.js';
-import { DraftManager }       from './DraftManager.js';
-import { ExportService }      from './ExportService.js';
-import { EditorUI }           from './EditorUI.js';
-import { ValidationEngine }   from './validation/ValidationEngine.js';
+import { openDB }               from './db.js';
+import { parse }                from './DIParser.js';
+import { DataRepository }       from './DataRepository.js';
+import { TemplateStore }        from './TemplateStore.js';
+import { DriveSync }            from './DriveSync.js';
+import { DraftManager }         from './DraftManager.js';
+import { ExportService }        from './ExportService.js';
+import { EditorUI }             from './EditorUI.js';
+import { ValidationEngine }     from './validation/ValidationEngine.js';
+import { autoFillRecipients }   from './RecipientAutoFiller.js';
 
 // ─── Module-level state ──────────────────────────────────────────────────────
 
@@ -353,12 +354,29 @@ function _wireToolbar() {
   const saveDraftBtn = document.getElementById('btn-save-draft');
   if (saveDraftBtn) {
     saveDraftBtn.addEventListener('click', async () => {
-      const state = _getEditorState();
-      if (!state) {
+      const doc = editorUI.getDocument();
+      if (!doc || !_templateFilename) {
         showNotification('請先開啟或選擇一個範本', 'warning');
         return;
       }
+
+      // ── 自動填入副本受文者 ─────────────────────────────────────
+      const fillResult = autoFillRecipients(doc, dataRepo);
+
+      if (fillResult.failed) {
+        // 組別不符，提示使用者修正主旨，但仍允許儲存
+        showNotification(fillResult.reason, 'warning');
+      } else if (!fillResult.skipped) {
+        // 成功自動填入，重新渲染副本區塊以反映新名單
+        editorUI.render(doc);
+        showNotification(fillResult.reason, 'success');
+      }
+      // skipped：資料不足，靜默略過，不影響儲存
+
+      // ── 儲存草稿 ──────────────────────────────────────────────
       try {
+        const state = _getEditorState();
+        if (!state) return;
         await draftManager.save(state.templateFilename, state.xmlContent);
         showNotification('草稿已儲存', 'success');
       } catch (err) {
