@@ -417,6 +417,24 @@ function _wireToolbar() {
         return;
       }
 
+      // ── 自動填入副本受文者（同儲存草稿邏輯）────────────────────
+      const fillResult = autoFillRecipients(doc, dataRepo);
+      if (fillResult.failed) {
+        showNotification(fillResult.reason, 'warning');
+      } else if (!fillResult.skipped) {
+        editorUI.render(doc);
+        showNotification(fillResult.reason, 'success');
+      }
+
+      // ── 匯出前自動儲存草稿 ─────────────────────────────────────
+      try {
+        const state = _getEditorState();
+        if (state) await draftManager.save(state.templateFilename, state.xmlContent);
+      } catch (err) {
+        console.warn('[app] 匯出前自動儲存失敗：', err);
+      }
+
+      // ── 執行驗證並匯出 ─────────────────────────────────────────
       const caseType = templateStore.getCaseType(_templateFilename);
       const filename = _templateFilename.replace(/\.di$/i, '_export.di');
 
@@ -426,7 +444,6 @@ function _wireToolbar() {
         );
 
         if (prep.warnings.length === 0) {
-          // No warnings — export directly
           prep.proceed();
           showNotification('文件已匯出', 'success');
         } else {

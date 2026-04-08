@@ -381,19 +381,25 @@ export class EditorUI {
    * @param {string} tagName - 目前僅使用 '副本'
    */
   _renderRecipients(container, rootEl, tagName) {
-    const sec = this._makeSection(container, tagName, SEC.FUBEN);
+    // 自訂 section，標題後附上說明字幕（白色，與標題同色）
+    const section = el('section', CLS.SECTION);
+    section.id = SEC.FUBEN;
+
+    const heading = el('h2', CLS.SECTION_TITLE);
+    heading.appendChild(document.createTextNode(tagName + '\u2002'));
+    const subtitle = document.createElement('span');
+    subtitle.style.cssText = 'font-size:0.72rem;font-weight:400;opacity:0.88;';
+    subtitle.textContent = '( 副本受文者依主旨自動生成，如有其他副本受文者，請將di檔匯入公文系統後再行增修 )';
+    heading.appendChild(subtitle);
+    section.appendChild(heading);
+    container.appendChild(section);
+    const sec = section;
 
     let parentEl = rootEl.getElementsByTagName(tagName)[0];
     if (!parentEl) {
       parentEl = this._xmlDoc.createElement(tagName);
       rootEl.appendChild(parentEl);
     }
-
-    // 說明文字：不開放手動新增，由系統自動填入
-    const note = document.createElement('p');
-    note.className = 'editor-section__note';
-    note.textContent = '副本受文者將於儲存草稿時依主旨組別自動填入。如有其他特殊之副本受文者，請匯入公文系統後自行手動增加。';
-    sec.appendChild(note);
 
     const listEl = el('div', CLS.LIST);
     sec.appendChild(listEl);

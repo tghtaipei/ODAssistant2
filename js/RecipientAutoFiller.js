@@ -237,23 +237,38 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
   }
 
   // ── 步驟 5：更新 <副本> XML ────────────────────────────────────
+  // 順序：① 主旨中提到的議員　② 同組其他議員　③ 原範本內非議員受文者
   const fubenEl = xmlDoc.getElementsByTagName('副本')[0];
   if (!fubenEl) {
     return { skipped: true, reason: '文件中未找到 <副本> 區塊，副本未自動更新' };
   }
 
-  // 移除所有「臺北市議會...議員」型態的 <全銜>（無論是佔位符還是舊資料）
-  const toRemove = Array.from(fubenEl.childNodes).filter(
+  // 先收集非議員受文者（保留，稍後附加至最末）
+  const nonLegislatorChildren = Array.from(fubenEl.childNodes).filter(
     child =>
       child.nodeType === Node.ELEMENT_NODE &&
       /** @type {Element} */ (child).tagName === '全銜' &&
-      isLegislatorRecipient(/** @type {Element} */ (child))
+      !isLegislatorRecipient(/** @type {Element} */ (child))
   );
-  toRemove.forEach(child => fubenEl.removeChild(child));
 
-  // 依序新增各議員的 <全銜>
-  for (const name of groupMembers) {
+  // 移除所有 <全銜>（議員 + 非議員皆移除，之後依序重建）
+  Array.from(fubenEl.childNodes)
+    .filter(child => child.nodeType === Node.ELEMENT_NODE && /** @type {Element} */ (child).tagName === '全銜')
+    .forEach(child => fubenEl.removeChild(child));
+
+  // 排序議員：主旨提到的議員優先放第一位，其餘依 CSV 順序
+  const orderedMembers = subjectLegislator && groupMembers.includes(subjectLegislator)
+    ? [subjectLegislator, ...groupMembers.filter(n => n !== subjectLegislator)]
+    : groupMembers;
+
+  // ① ② 新增議員 <全銜>
+  for (const name of orderedMembers) {
     fubenEl.appendChild(createLegislatorElement(xmlDoc, name));
+  }
+
+  // ③ 非議員受文者附加至最後
+  for (const child of nonLegislatorChildren) {
+    fubenEl.appendChild(child);
   }
 
   return {
