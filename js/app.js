@@ -47,6 +47,8 @@ let _xmlDecl   = null;
 let _doctype   = null;
 /** Current template filename. @type {string|null} */
 let _templateFilename = null;
+/** 目前文件是否含「等議員提案」尚未填寫（略過後再次提醒）。 */
+let _proposerPending = false;
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 
@@ -338,6 +340,7 @@ async function _loadTemplate(filename) {
     draftManager.stopAutoSave();
     draftManager.startAutoSave(() => _getEditorState());
 
+    _proposerPending = false;  // reset; _checkProposerModal may set it true
     _updateDocumentTitle(filename);
     showNotification(`已載入範本：${templateStore.getDisplayName(filename)}`, 'success');
     _checkProposerModal(xmlDoc);
@@ -361,6 +364,7 @@ async function _loadFromDraft(draft) {
     draftManager.stopAutoSave();
     draftManager.startAutoSave(() => _getEditorState());
 
+    _proposerPending = false;
     _updateDocumentTitle(draft.templateFilename);
     const savedDate = new Date(draft.savedAt).toLocaleString('zh-TW');
     showNotification(`已還原草稿（${savedDate}）`, 'success');
@@ -382,6 +386,9 @@ function _wireToolbar() {
         showNotification('請先開啟或選擇一個範本', 'warning');
         return;
       }
+
+      // ── 等議員提案：若尚未填寫，先彈出 modal 再繼續 ────────────
+      if (_proposerPending) await _awaitProposerModal(doc);
 
       // ── 自動填入副本受文者 ─────────────────────────────────────
       const fillResult = autoFillRecipients(doc, dataRepo);
@@ -417,6 +424,9 @@ function _wireToolbar() {
         showNotification('請先開啟或選擇一個範本', 'warning');
         return;
       }
+
+      // ── 等議員提案：若尚未填寫，先彈出 modal 再繼續（略過仍允許匯出）──
+      if (_proposerPending) await _awaitProposerModal(doc);
 
       // ── 自動填入副本受文者（同儲存草稿邏輯）────────────────────
       const fillResult = autoFillRecipients(doc, dataRepo);
@@ -555,15 +565,25 @@ function _updateDocumentTitle(filename) {
   document.title = `${templateStore.getDisplayName(filename)} — 公文寫作輔助系統`;
 }
 
+/**
+ * 關閉 modal。若 modal 上掛有 `_onclose` 回呼（來自 _awaitProposerModal），
+ * 關閉後立即觸發，確保 await 在所有關閉路徑（略過、✕、Escape、backdrop）都能 resolve。
+ * @param {HTMLElement} modal
+ */
 function _closeModal(modal) {
   modal.classList.remove('modal--open');
   modal.setAttribute('hidden', '');
+  if (typeof (/** @type {any} */ (modal))._onclose === 'function') {
+    const cb = /** @type {any} */ (modal)._onclose;
+    /** @type {any} */ (modal)._onclose = null;
+    cb();
+  }
 }
 
 // ─── 等議員提案 modal ─────────────────────────────────────────────────────────
 
 /**
- * 載入範本後，若主旨含「等議員提案」，自動開啟提案議員名單輸入 modal。
+ * 載入範本後，若主旨含「等議員提案」，設定提醒旗標並開啟 modal。
  * @param {Document} xmlDoc
  */
 function _checkProposerModal(xmlDoc) {
@@ -571,19 +591,34 @@ function _checkProposerModal(xmlDoc) {
     ?.getElementsByTagName('文字')[0];
   if (!wenziEl) return;
   if (!(wenziEl.textContent ?? '').includes('等議員提案')) return;
+  _proposerPending = true;
   _openProposerModal(xmlDoc);
 }
 
 /**
- * 開啟提案議員名單輸入 modal，並掛載互動邏輯。
+ * 以 Promise 包裝 _openProposerModal，供 save/export 流程 await 使用。
+ * modal 關閉（無論確認或略過）後 Promise resolve。
  * @param {Document} xmlDoc
+ * @returns {Promise<void>}
  */
-function _openProposerModal(xmlDoc) {
+function _awaitProposerModal(xmlDoc) {
+  return new Promise(resolve => _openProposerModal(xmlDoc, resolve));
+}
+
+/**
+ * 開啟提案議員名單輸入 modal，並掛載互動邏輯。
+ * @param {Document}       xmlDoc
+ * @param {(()=>void)|null} [afterClose] - modal 關閉後呼叫（確認或略過皆觸發）。
+ */
+function _openProposerModal(xmlDoc, afterClose = null) {
   const modal      = document.getElementById('modal-proposers');
   const listEl     = document.getElementById('proposers-list');
   const addBtn     = document.getElementById('btn-proposers-add');
   const confirmBtn = document.getElementById('btn-proposers-confirm');
-  if (!modal || !listEl || !addBtn || !confirmBtn) return;
+  if (!modal || !listEl || !addBtn || !confirmBtn) {
+    afterClose?.();
+    return;
+  }
 
   // 每次開啟都重設，避免殘留前次資料
   listEl.innerHTML = '';
@@ -605,11 +640,15 @@ function _openProposerModal(xmlDoc) {
       return;
     }
 
+    _proposerPending = false;   // 已成功填寫，清除提醒旗標
     const result = fillProposers(xmlDoc, names);
     editorUI.render(xmlDoc);
-    _closeModal(modal);
+    _closeModal(modal);         // 此處觸發 _onclose → afterClose?.()
     showNotification(result.reason, result.ok ? 'success' : 'warning');
   };
+
+  // 掛載 afterClose，_closeModal 關閉時自動呼叫（含略過、✕、Escape、backdrop）
+  /** @type {any} */ (modal)._onclose = afterClose;
 
   modal.classList.add('modal--open');
   modal.removeAttribute('hidden');
