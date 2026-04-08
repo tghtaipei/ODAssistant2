@@ -3,16 +3,18 @@
  *
  * ─── 演算法說明 ──────────────────────────────────────────────
  *
- * 由於每位議員在「定期大會」和「部門質詢」的組別可能不同，
+ * 由於每位議員在「市政總質詢」和「部門質詢」的組別可能不同，
  * 必須先確認文件屬於哪種會議類型，才能比對正確的組別。
  *
  * 完整流程：
  *
  * 1. 從 DataRepository 取得所有已載入的會議/部門類型
- *    （即 CSV 第一欄的所有不重複值，例如「定期大會」、「警政衛生部門」）。
+ *    （即 CSV 第一欄的所有不重複值，例如「市政總質詢」、「警政衛生部門」）。
  *
  * 2. 掃描文件的 <主旨> 全文，確認包含哪些會議類型關鍵字：
- *    - 若主旨包含其中一個已知的會議類型字串 → 鎖定該 meetingType。
+ *    - 第一優先：主旨直接包含 CSV 類型字串 → 鎖定該 meetingType。
+ *    - 第二優先：主旨不含 CSV 類型，但含有 SUBJECT_KEYWORD_MAP 中的別名關鍵字
+ *                → 對應到指定的 CSV 類型（例如主旨說「定期大會」→ CSV 用「市政總質詢」）。
  *    - 若找到多個或完全找不到 → 無法判斷類型，跳過組別驗證（避免誤報）。
  *
  * 3. 在掃描範圍（主旨、說明、副本）中找出所有「議員」出現位置，
@@ -26,13 +28,13 @@
  *    若與查出的組別不符 → 跳出告警。
  *
  * 範例：
- *   主旨：「…定期大會…劉耀仁議員…」
- *   偵測到 meetingType = '定期大會'
- *   劉耀仁在「定期大會」的組別 = 第3組
+ *   主旨：「…定期大會市長施政報告…第1組劉耀仁議員…」
+ *   「定期大會」→ 別名對應 CSV 類型「市政總質詢」
+ *   劉耀仁在「市政總質詢」的組別 = 第3組
  *   文件中提到「第1組」→ 不符 → 警告 ✗
  *
- *   主旨：「…警政衛生部門…劉耀仁議員…」
- *   偵測到 meetingType = '警政衛生部門'
+ *   主旨：「…警政衛生部門質詢…第1組劉耀仁議員…」
+ *   「警政衛生部門」直接命中 CSV 類型
  *   劉耀仁在「警政衛生部門」的組別 = 第1組
  *   文件中提到「第1組」→ 相符 → 通過 ✓
  * ─────────────────────────────────────────────────────────────
@@ -42,6 +44,21 @@ import { ValidatorBase } from './ValidatorBase.js';
 
 /** 要掃描議員與組別的 XML 標籤範圍。 */
 const SCAN_TAGS = ['主旨', '段落', '副本'];
+
+/**
+ * 主旨關鍵字 → CSV 類型 的別名對應表。
+ *
+ * 當主旨中出現的關鍵字與 CSV 第一欄的類型名稱不一致時，
+ * 可在此設定對應關係。例如：
+ *   公文主旨說「定期大會」，但議員分組.csv 第一欄寫「市政總質詢」。
+ *
+ * 規則：key = 主旨中出現的字串，value = CSV 第一欄對應的類型名稱。
+ *
+ * @type {Record<string, string>}
+ */
+const SUBJECT_KEYWORD_MAP = {
+  '定期大會': '市政總質詢',
+};
 
 /** 匹配「第N組」，捕捉組別數字。 */
 const GROUP_RE = /第(\d+)組/g;
@@ -104,28 +121,36 @@ export class GroupValidator extends ValidatorBase {
     console.debug('[GroupValidator] 主旨文字：', subjectText);
     console.debug('[GroupValidator] 已知會議類型：', meetingTypes);
 
-    // 找出主旨中命中的所有已知會議類型
-    const matched = meetingTypes.filter(type => subjectText.includes(type));
+    // 第一優先：主旨直接包含 CSV 中的類型名稱
+    const directMatched = meetingTypes.filter(type => subjectText.includes(type));
+    console.debug('[GroupValidator] 直接命中的會議類型：', directMatched);
 
-    console.debug('[GroupValidator] 命中的會議類型：', matched);
+    /** @type {string|null} 最終確定的 CSV 類型 */
+    let meetingType = null;
 
-    if (matched.length === 0) {
-      // 議員名冊已載入，但主旨中找不到任何已知的會議/部門類型。
-      // 可能原因：CSV 未包含與主旨對應的類型（例如主旨有「定期大會」但 CSV 僅有部門名稱）。
-      results.push({
-        field: '組別',
-        message: `主旨中未包含議員分組 CSV 中的任何已知會議/部門類型（已知類型：${meetingTypes.join('、')}），無法核對組別，請確認 CSV 格式是否正確。`,
-      });
+    if (directMatched.length === 1) {
+      meetingType = directMatched[0];
+    } else if (directMatched.length === 0) {
+      // 第二優先：主旨未含 CSV 類型，嘗試 SUBJECT_KEYWORD_MAP 別名對應
+      // 例如主旨說「定期大會」→ 對應 CSV 類型「市政總質詢」
+      for (const [keyword, csvType] of Object.entries(SUBJECT_KEYWORD_MAP)) {
+        if (subjectText.includes(keyword) && meetingTypes.includes(csvType)) {
+          meetingType = csvType;
+          console.debug(`[GroupValidator] 別名命中：主旨含「${keyword}」→ CSV 類型「${csvType}」`);
+          break;
+        }
+      }
+
+      if (!meetingType) {
+        // 直接命中和別名對應均失敗，無法判斷會議類型，跳過以避免誤報
+        console.debug('[GroupValidator] 無法判斷會議類型，跳過組別驗證');
+        return results;
+      }
+    } else {
+      // 命中多個 CSV 類型，無法確定，跳過
+      console.warn('[GroupValidator] 命中多個類型，跳過：', directMatched);
       return results;
     }
-
-    if (matched.length > 1) {
-      // 主旨同時命中多個已知類型，無法確定應套用哪組資料，跳過避免誤報。
-      console.warn('[GroupValidator] 命中多個類型，跳過：', matched);
-      return results;
-    }
-
-    const meetingType = matched[0]; // 確定唯一的會議類型
 
     // ── 步驟 2：掃描各欄位，找出（議員姓名, 提及組別）對 ────────
     // 用 Set 避免重複回報相同的（姓名, 組別）組合
