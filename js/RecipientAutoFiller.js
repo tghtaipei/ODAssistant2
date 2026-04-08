@@ -330,3 +330,59 @@ function _fillSingleLegislator(xmlDoc, name) {
     addedCount: 1,
   };
 }
+
+// ─── 等議員提案：以指定名單填入主旨佔位符與副本受文者 ─────────────
+
+/**
+ * 主旨含「等議員提案」時，以使用者輸入的名單一次性更新：
+ * 1. 將主旨 <文字> 中「等議員提案」前方的佔位符（○、〇）替換為第一位議員姓名。
+ * 2. 移除 <副本> 內所有議員型 <全銜>，依名單順序重新新增。
+ *
+ * @param {Document} xmlDoc
+ * @param {string[]} names  - 議員姓名清單（純姓名，不含「議員」前後綴）。
+ * @returns {{ ok: boolean, reason: string }}
+ */
+export function fillProposers(xmlDoc, names) {
+  // ── 1. 更新主旨 ────────────────────────────────────────────────
+  const subjectEl = xmlDoc.getElementsByTagName('主旨')[0];
+  const wenziEl   = subjectEl?.getElementsByTagName('文字')[0];
+  if (wenziEl) {
+    // 匹配「等議員提案」前方連續的 ○ 或 〇 佔位符
+    // 同時支援「○○○等議員提案」和「○○○議員等議員提案」兩種格式
+    const PLACEHOLDER_RE = /[○〇]+(?=(?:議員)?等議員提案)/;
+    wenziEl.textContent = (wenziEl.textContent ?? '').replace(PLACEHOLDER_RE, names[0]);
+  }
+
+  // ── 2. 更新副本 ────────────────────────────────────────────────
+  const fubenEl = xmlDoc.getElementsByTagName('副本')[0];
+  if (!fubenEl) {
+    return { ok: false, reason: '文件中未找到 <副本> 區塊' };
+  }
+
+  // 保留非議員受文者
+  const nonLegislatorChildren = Array.from(fubenEl.childNodes).filter(
+    child =>
+      child.nodeType === Node.ELEMENT_NODE &&
+      /** @type {Element} */ (child).tagName === '全銜' &&
+      !isLegislatorRecipient(/** @type {Element} */ (child))
+  );
+
+  // 移除所有 <全銜>
+  Array.from(fubenEl.getElementsByTagName('全銜'))
+    .forEach(el => fubenEl.removeChild(el));
+
+  // 依名單順序新增議員
+  for (const name of names) {
+    fubenEl.appendChild(createLegislatorElement(xmlDoc, name));
+  }
+
+  // 非議員受文者附加至最後
+  for (const child of nonLegislatorChildren) {
+    fubenEl.appendChild(child);
+  }
+
+  return {
+    ok:     true,
+    reason: `已填入 ${names.length} 位提案議員，副本已更新`,
+  };
+}

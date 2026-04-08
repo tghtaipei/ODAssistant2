@@ -20,7 +20,7 @@ import { DraftManager }         from './DraftManager.js';
 import { ExportService }        from './ExportService.js';
 import { EditorUI }             from './EditorUI.js';
 import { ValidationEngine }     from './validation/ValidationEngine.js';
-import { autoFillRecipients }   from './RecipientAutoFiller.js';
+import { autoFillRecipients, fillProposers } from './RecipientAutoFiller.js';
 
 // ─── Module-level state ──────────────────────────────────────────────────────
 
@@ -340,6 +340,7 @@ async function _loadTemplate(filename) {
 
     _updateDocumentTitle(filename);
     showNotification(`已載入範本：${templateStore.getDisplayName(filename)}`, 'success');
+    _checkProposerModal(xmlDoc);
   } catch (err) {
     console.error('[app] 載入範本失敗：', err);
     showNotification(`載入範本失敗：${err.message}`, 'error');
@@ -557,4 +558,90 @@ function _updateDocumentTitle(filename) {
 function _closeModal(modal) {
   modal.classList.remove('modal--open');
   modal.setAttribute('hidden', '');
+}
+
+// ─── 等議員提案 modal ─────────────────────────────────────────────────────────
+
+/**
+ * 載入範本後，若主旨含「等議員提案」，自動開啟提案議員名單輸入 modal。
+ * @param {Document} xmlDoc
+ */
+function _checkProposerModal(xmlDoc) {
+  const wenziEl = xmlDoc.getElementsByTagName('主旨')[0]
+    ?.getElementsByTagName('文字')[0];
+  if (!wenziEl) return;
+  if (!(wenziEl.textContent ?? '').includes('等議員提案')) return;
+  _openProposerModal(xmlDoc);
+}
+
+/**
+ * 開啟提案議員名單輸入 modal，並掛載互動邏輯。
+ * @param {Document} xmlDoc
+ */
+function _openProposerModal(xmlDoc) {
+  const modal      = document.getElementById('modal-proposers');
+  const listEl     = document.getElementById('proposers-list');
+  const addBtn     = document.getElementById('btn-proposers-add');
+  const confirmBtn = document.getElementById('btn-proposers-confirm');
+  if (!modal || !listEl || !addBtn || !confirmBtn) return;
+
+  // 每次開啟都重設，避免殘留前次資料
+  listEl.innerHTML = '';
+  _addProposerRow(listEl, true);   // 第一列：必填、無刪除鍵
+
+  addBtn.onclick = () => _addProposerRow(listEl, false);
+
+  confirmBtn.onclick = () => {
+    const inputs = /** @type {NodeListOf<HTMLInputElement>} */ (
+      listEl.querySelectorAll('input.proposer-input')
+    );
+    const names = Array.from(inputs)
+      .map(inp => inp.value.trim())
+      .filter(n => n.length > 0);
+
+    // 至少需要一個名字
+    if (names.length === 0) {
+      inputs[0]?.focus();
+      return;
+    }
+
+    const result = fillProposers(xmlDoc, names);
+    editorUI.render(xmlDoc);
+    _closeModal(modal);
+    showNotification(result.reason, result.ok ? 'success' : 'warning');
+  };
+
+  modal.classList.add('modal--open');
+  modal.removeAttribute('hidden');
+  listEl.querySelector('input')?.focus();
+}
+
+/**
+ * 動態新增一列議員姓名輸入欄。
+ * @param {HTMLElement} listEl  - #proposers-list 容器
+ * @param {boolean}     isFirst - 是否為第一列（必填、無刪除按鈕）
+ */
+function _addProposerRow(listEl, isFirst) {
+  const row = document.createElement('div');
+  row.className = 'proposer-row';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'proposer-input';
+  input.placeholder = isFirst ? '提案議員姓名（必填）' : '議員姓名';
+  input.setAttribute('autocomplete', 'off');
+  row.appendChild(input);
+
+  if (!isFirst) {
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-remove';
+    removeBtn.title = '移除';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', () => row.remove());
+    row.appendChild(removeBtn);
+  }
+
+  listEl.appendChild(row);
+  if (!isFirst) input.focus();
 }

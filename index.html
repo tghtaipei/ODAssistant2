@@ -202,6 +202,33 @@
 </div>
 
 <!-- ====================================================
+     Modal: Proposers Input
+     ==================================================== -->
+<div class="modal" id="modal-proposers" hidden aria-modal="true" role="dialog" aria-labelledby="modal-proposers-title">
+  <div class="modal-box sm">
+
+    <div class="modal-header">
+      <h2 id="modal-proposers-title">輸入提案議員名單</h2>
+      <button class="modal-close" data-close-modal="modal-proposers" title="略過" aria-label="略過">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:1.1rem;line-height:1.65">
+        請將提案議員放第一位，如議長和副議長有聯署，那就放第二和三位，最後依序填入其他署名議員。
+      </p>
+      <div id="proposers-list"></div>
+      <button class="btn btn-secondary" id="btn-proposers-add" style="margin-top:0.5rem;width:100%">＋ 新增議員</button>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="modal-proposers">略過</button>
+      <button class="btn btn-primary" id="btn-proposers-confirm">確認</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ====================================================
      Toast / Notification Container (populated by app.js)
      ==================================================== -->
 <div id="notifications" role="status" aria-live="polite"></div>

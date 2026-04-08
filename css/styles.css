@@ -516,6 +516,43 @@ body {
 .validation-item .vi-field { font-weight: 700; color: var(--gray-700); margin-right: 0.3em; }
 .validation-item .vi-msg { color: var(--gray-600); }
 
+/* ---- Proposer Rows (modal-proposers) ---- */
+.proposer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.proposer-row input {
+  flex: 1;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--border-radius);
+  font-size: 0.9rem;
+  font-family: var(--font);
+}
+.proposer-row input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+}
+.proposer-row .btn-remove {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--gray-100);
+  color: var(--gray-500);
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.proposer-row .btn-remove:hover { background: #fee2e2; color: #dc2626; }
+
 /* ---- Settings Form ---- */
 .settings-form { display: flex; flex-direction: column; gap: 1rem; }
 .settings-field { display: flex; flex-direction: column; gap: 0.35rem; }
