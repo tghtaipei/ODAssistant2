@@ -280,7 +280,13 @@ function _createNotificationContainer() {
  * @param {import('./validation/ValidatorBase.js').ValidationResult[]} warnings
  * @param {Function} onConfirm  - Called when the user clicks "仍要匯出".
  */
-export function showValidationModal(warnings, onConfirm) {
+/**
+ * @param {import('./validation/ValidatorBase.js').ValidationResult[]} warnings
+ * @param {()=>void} onConfirm
+ * @param {{ confirmLabel?: string }} [opts]
+ */
+export function showValidationModal(warnings, onConfirm, opts = {}) {
+  const { confirmLabel = '仍要匯出' } = opts;
   const modal   = document.getElementById('modal-validation');
   const listEl  = document.getElementById('validation-list');
   const confirmBtn = document.getElementById('btn-validation-confirm');
@@ -289,7 +295,7 @@ export function showValidationModal(warnings, onConfirm) {
   if (!modal || !listEl) {
     // Fallback if modal HTML is missing
     const hasErrors = warnings.some((w) => w.level === 'error');
-    if (!hasErrors && confirm('驗證發現警告，仍要繼續匯出？\n\n' + warnings.map((w) => w.message).join('\n'))) {
+    if (!hasErrors && confirm('驗證發現警告，仍要繼續？\n\n' + warnings.map((w) => w.message).join('\n'))) {
       onConfirm();
     }
     return;
@@ -308,7 +314,7 @@ export function showValidationModal(warnings, onConfirm) {
 
   if (confirmBtn) {
     confirmBtn.disabled = hasErrors;
-    confirmBtn.textContent = hasErrors ? '無法匯出（請修正錯誤）' : '仍要匯出';
+    confirmBtn.textContent = hasErrors ? '無法繼續（請修正錯誤）' : confirmLabel;
     confirmBtn.onclick = () => {
       _closeModal(modal);
       onConfirm();
@@ -394,23 +400,25 @@ function _wireToolbar() {
       const fillResult = autoFillRecipients(doc, dataRepo);
 
       if (fillResult.failed) {
-        // 組別不符，提示使用者修正主旨，但仍允許儲存
         showNotification(fillResult.reason, 'warning');
       } else if (!fillResult.skipped) {
-        // 成功自動填入，重新渲染副本區塊以反映新名單
         editorUI.render(doc);
         showNotification(fillResult.reason, 'success');
       }
-      // skipped：資料不足，靜默略過，不影響儲存
 
-      // ── 儲存草稿 ──────────────────────────────────────────────
+      // ── 檢核並儲存草稿 ────────────────────────────────────────
+      const caseType = templateStore.getCaseType(_templateFilename);
+      let findings = [];
       try {
-        const state = _getEditorState();
-        if (!state) return;
-        await draftManager.save(state.templateFilename, state.xmlContent);
-        showNotification('草稿已儲存', 'success');
+        findings = await validationEngine.validate(doc, caseType);
       } catch (err) {
-        showNotification(`草稿儲存失敗：${err.message}`, 'error');
+        console.warn('[app] 儲存草稿時檢核失敗：', err);
+      }
+
+      if (findings.length > 0) {
+        showValidationModal(findings, _doSaveDraft, { confirmLabel: '仍要儲存' });
+      } else {
+        await _doSaveDraft();
       }
     });
   }
@@ -538,6 +546,18 @@ function _wireToolbar() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** 執行草稿儲存並顯示通知（供儲存草稿流程直接呼叫或作為 modal 確認的 callback）。 */
+async function _doSaveDraft() {
+  try {
+    const state = _getEditorState();
+    if (!state) return;
+    await draftManager.save(state.templateFilename, state.xmlContent);
+    showNotification('草稿已儲存', 'success');
+  } catch (err) {
+    showNotification(`草稿儲存失敗：${err.message}`, 'error');
+  }
+}
 
 function _getEditorState() {
   const doc = editorUI?.getDocument();
