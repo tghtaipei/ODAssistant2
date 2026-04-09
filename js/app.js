@@ -388,7 +388,8 @@ async function _loadFromDraft(draft) {
     draftManager.stopAutoSave();
     draftManager.startAutoSave(() => _getEditorState());
 
-    _proposerPending = false;
+    // 根據草稿內容決定是否需要提案議員名單（不立即開啟 modal，等儲存/匯出時再提醒）
+    _proposerPending = _hasUnfilledProposer(xmlDoc);
     _updateDocumentTitle(draft.templateFilename);
     const savedDate = new Date(draft.savedAt).toLocaleString('zh-TW');
     showNotification(`已還原草稿（${savedDate}）`, 'success');
@@ -621,14 +622,25 @@ function _closeModal(modal) {
 // ─── 等議員提案 modal ─────────────────────────────────────────────────────────
 
 /**
- * 載入範本後，若主旨含「等議員提案」，設定提醒旗標並開啟 modal。
+ * 判斷主旨中「等議員提案」前方的佔位符（○ / 〇）是否尚未填寫。
+ * 已填入真實姓名（如「柳采葳議員等議員提案」）時回傳 false。
+ *
+ * @param {Document} xmlDoc
+ * @returns {boolean}
+ */
+function _hasUnfilledProposer(xmlDoc) {
+  const text = xmlDoc.getElementsByTagName('主旨')[0]
+    ?.getElementsByTagName('文字')[0]?.textContent ?? '';
+  return /[○〇]+(?:議員)?等議員提案/.test(text);
+}
+
+/**
+ * 載入範本後，若主旨的「等議員提案」前仍有未填寫的佔位符，
+ * 設定提醒旗標並立即開啟 modal。
  * @param {Document} xmlDoc
  */
 function _checkProposerModal(xmlDoc) {
-  const wenziEl = xmlDoc.getElementsByTagName('主旨')[0]
-    ?.getElementsByTagName('文字')[0];
-  if (!wenziEl) return;
-  if (!(wenziEl.textContent ?? '').includes('等議員提案')) return;
+  if (!_hasUnfilledProposer(xmlDoc)) return;
   _proposerPending = true;
   _openProposerModal(xmlDoc);
 }
