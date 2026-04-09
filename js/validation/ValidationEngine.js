@@ -6,14 +6,14 @@
  * applicable validator concurrently and merges the results.
  *
  * Built-in registrations (performed automatically in the constructor):
- *  - {@link LegislatorValidator} → `'*'`
- *  - {@link GroupValidator}      → `'*'`
- *  - {@link CaseType81Validator} → `'8-1'`
+ *  - {@link PlaceholderValidator}  → `'*'`
+ *  - {@link ExplanationValidator}  → `'*'`
+ *  - {@link LegislatorValidator}   → `'*'`
+ *  - {@link GroupValidator}        → `'*'`
  */
 
 import { LegislatorValidator }  from './LegislatorValidator.js';
 import { GroupValidator }        from './GroupValidator.js';
-import { CaseType81Validator }   from './CaseType81Validator.js';
 import { PlaceholderValidator }  from './PlaceholderValidator.js';
 import { ExplanationValidator }  from './ExplanationValidator.js';
 
@@ -33,7 +33,7 @@ const WILDCARD = '*';
  * Usage:
  * ```js
  * const engine = new ValidationEngine(dataRepo);
- * const findings = await engine.validate(xmlDoc, '8-1');
+ * const findings = await engine.validate(xmlDoc, caseType);
  * ```
  */
 export class ValidationEngine {
@@ -57,7 +57,6 @@ export class ValidationEngine {
     this.register(WILDCARD, new ExplanationValidator());
     this.register(WILDCARD, new LegislatorValidator());
     this.register(WILDCARD, new GroupValidator());
-    this.register('8-1',    new CaseType81Validator());
   }
 
   /**
@@ -85,7 +84,7 @@ export class ValidationEngine {
    * single flat array preserving registration order.
    *
    * @param {Document} xmlDoc    - The parsed DI document DOM.
-   * @param {string}   caseType  - The case type identifier (e.g. `'8-1'`).
+   * @param {string}   caseType  - The case type identifier (used to run type-specific validators).
    * @returns {Promise<ValidationResult[]>} All findings from every applicable validator.
    */
   async validate(xmlDoc, caseType) {
