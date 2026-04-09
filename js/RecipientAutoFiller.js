@@ -3,16 +3,19 @@
  *
  * ─── 流程說明 ──────────────────────────────────────────────────
  *
- * 1. 從主旨偵測會議/部門類型（同 GroupValidator 邏輯）：
+ * 1. 從主旨擷取議員姓名（使用議員名冊）。
+ *
+ * 2. 從主旨擷取組別（如「第1組」）。
+ *    ‣ 若無組別但有議員姓名 → 直接以該議員更新副本第一位（Rule 4），流程結束。
+ *
+ * 3. （有組別時）偵測會議/部門類型：
  *    - 優先：主旨直接包含 CSV 類型名稱（如「警政衛生部門」）。
  *    - 備援：主旨含 SUBJECT_KEYWORD_MAP 別名（如「定期大會」→「市政總質詢」）。
  *
- * 2. 從主旨擷取組別（如「第1組」）。
+ * 4. 驗證：主旨議員的實際組別與主旨標示的組別一致。
+ *    若不一致 → 回傳 failed 結果，不修改 XML。
  *
- * 3. 驗證：找出主旨中「議員」前方的議員姓名，確認其組別與主旨一致。
- *    若不一致 → 回傳 failed 結果，不修改 XML，並告知使用者。
- *
- * 4. 取得該組別的所有議員，從 <副本> 中移除所有
+ * 5. 取得該組別的所有議員，從 <副本> 中移除所有
  *    「臺北市議會...議員」型態的 <全銜> 元素，再逐一新增各議員的 <全銜>。
  *
  * 新增的 <全銜> 格式：
@@ -171,27 +174,16 @@ function createLegislatorElement(xmlDoc, name) {
  * @returns {AutoFillResult}
  */
 export function autoFillRecipients(xmlDoc, dataRepo) {
-  // ── 前置條件：議員名冊與組別資料必須已載入 ──────────────────
+  // ── 前置條件：議員名冊必須已載入 ──────────────────────────────
   const legislators = dataRepo.getAllLegislators();
   if (legislators.length === 0) {
     return { skipped: true, reason: '議員名冊未載入，副本未自動更新' };
   }
 
-  const meetingTypes = dataRepo.getAllMeetingTypes();
-  if (meetingTypes.length === 0) {
-    return { skipped: true, reason: '組別資料未載入，副本未自動更新' };
-  }
-
-  // ── 步驟 1：從主旨取得會議類型 ────────────────────────────────
-  const subjectEl  = xmlDoc.getElementsByTagName('主旨')[0];
+  const subjectEl   = xmlDoc.getElementsByTagName('主旨')[0];
   const subjectText = subjectEl ? (subjectEl.textContent ?? '') : '';
 
-  const meetingType = detectMeetingType(subjectText, meetingTypes);
-  if (!meetingType) {
-    return { skipped: true, reason: '無法從主旨判斷會議/部門類型，副本未自動更新' };
-  }
-
-  // ── 步驟 2：從主旨擷取議員姓名 ───────────────────────────────
+  // ── 步驟 1：從主旨擷取議員姓名 ───────────────────────────────
   const maxNameLen = Math.max(...legislators.map(n => n.length));
   let subjectLegislator = null;
   let searchFrom = 0;
@@ -207,15 +199,27 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
     searchFrom = idx + 2;
   }
 
-  // ── 步驟 3：從主旨取得組別 ────────────────────────────────────
+  // ── 步驟 2：從主旨取得組別 ────────────────────────────────────
   const groupMatch = GROUP_RE.exec(subjectText);
 
   // 【Rule 4】無組別但有議員姓名 → 只新增該議員一人至副本第一位
+  // 此規則在無法判斷會議類型時仍需執行，因此優先於會議類型偵測。
   if (!groupMatch) {
     if (!subjectLegislator) {
       return { skipped: true, reason: '主旨中未找到組別或議員姓名，副本未自動更新' };
     }
     return _fillSingleLegislator(xmlDoc, subjectLegislator, legislators);
+  }
+
+  // ── 步驟 3：有組別時才需要取得會議類型 ────────────────────────
+  const meetingTypes = dataRepo.getAllMeetingTypes();
+  if (meetingTypes.length === 0) {
+    return { skipped: true, reason: '組別資料未載入，副本未自動更新' };
+  }
+
+  const meetingType = detectMeetingType(subjectText, meetingTypes);
+  if (!meetingType) {
+    return { skipped: true, reason: '無法從主旨判斷會議/部門類型，副本未自動更新' };
   }
 
   const groupLabel = `第${groupMatch[1]}組`;
