@@ -1,5 +1,5 @@
 /* ===================================================
-   ODAssistant2 - 公文寫作輔助系統
+   ODAssistant2 - 議會公文案件輔助系統
    Main Stylesheet
    =================================================== */
 
@@ -94,6 +94,7 @@ body {
 .topbar-btn.primary { background: rgba(255,255,255,0.9); color: var(--primary); font-weight: 600; }
 .topbar-btn.primary:hover { background: #fff; }
 .topbar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+a.topbar-btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* ---- Main Content ---- */
 #main-content {

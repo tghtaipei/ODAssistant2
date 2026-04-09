@@ -1,7 +1,7 @@
 {
-  "name": "公文寫作輔助系統",
-  "short_name": "公文助理",
-  "description": "公文寫作輔助系統 - 本機端安全操作",
+  "name": "議會公文案件輔助系統",
+  "short_name": "議會公文",
+  "description": "議會公文案件輔助系統 - 本機端安全操作",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#f0f4f8",
