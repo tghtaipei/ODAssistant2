@@ -4,7 +4,7 @@
  * Data (DI files, drafts) is stored in IndexedDB, not SW cache.
  */
 
-const CACHE_NAME = 'odassistant-v21';
+const CACHE_NAME = 'odassistant-v22';
 
 const APP_SHELL = [
   './',
