@@ -51,6 +51,7 @@ const DEFAULT_BASE_URL = 'https://github.com/tghtaipei/od-templates/tree/main/te
  * @typedef {Object} SyncResult
  * @property {boolean}     updated
  * @property {SyncItem[]}  items
+ * @property {string[]}    removed  - Filenames removed from remote since last sync.
  * @property {string|null} error
  */
 
@@ -164,12 +165,14 @@ export class DriveSync {
   async sync() {
     /** @type {SyncItem[]} */
     const items = [];
+    /** @type {string[]} */
+    const removed = [];
 
     let config;
     try {
       config = await this.getConfig();
     } catch (err) {
-      return { updated: false, items, error: `讀取設定失敗：${err.message}` };
+      return { updated: false, items, removed, error: `讀取設定失敗：${err.message}` };
     }
 
     const { baseUrl } = config;
@@ -179,7 +182,7 @@ export class DriveSync {
     try {
       entries = await this._listDirectory(baseUrl);
     } catch (err) {
-      return { updated: false, items, error: err.message };
+      return { updated: false, items, removed, error: err.message };
     }
 
     // 2. 載入快取的 SHA
@@ -194,7 +197,8 @@ export class DriveSync {
     const updatedMeta = { ...syncMeta };
     let anyUpdated = false;
 
-    // 3. 處理每個檔案
+    // 3. 處理每個檔案（新增或更新）
+    const remoteNames = new Set();
     for (const entry of entries) {
       if (entry.type !== 'file') continue;
 
@@ -203,6 +207,7 @@ export class DriveSync {
       const isMemberCsv = name === MEMBER_CSV_NAME;
 
       if (!isDi && !isMemberCsv) continue;
+      remoteNames.add(name);
 
       // SHA 相同表示檔案未變動
       if (syncMeta[name] === entry.sha) continue;
@@ -232,7 +237,16 @@ export class DriveSync {
       anyUpdated = true;
     }
 
-    // 4. 更新快取 SHA
+    // 4. 偵測已從遠端移除的 .di 範本
+    for (const cachedName of Object.keys(syncMeta)) {
+      if (/\.di$/i.test(cachedName) && !remoteNames.has(cachedName)) {
+        removed.push(cachedName);
+        delete updatedMeta[cachedName];
+        anyUpdated = true;
+      }
+    }
+
+    // 5. 更新快取 SHA
     if (anyUpdated) {
       try {
         await put(STORES.DATA, { id: SYNC_META_KEY, payload: updatedMeta });
@@ -241,6 +255,6 @@ export class DriveSync {
       }
     }
 
-    return { updated: anyUpdated, items, error: null };
+    return { updated: anyUpdated, items, removed, error: null };
   }
 }

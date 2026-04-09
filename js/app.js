@@ -123,7 +123,7 @@ async function _syncInBackground() {
       return;
     }
 
-    // Process sync items
+    // Process sync items (new / updated)
     for (const item of result.items) {
       if (item.type === 'template') {
         await templateStore.saveTemplate({
@@ -140,8 +140,26 @@ async function _syncInBackground() {
       }
     }
 
-    if (statusEl) statusEl.textContent = `已更新 ${result.items.length} 個檔案`;
-    showNotification(`已更新 ${result.items.length} 個檔案`, 'success');
+    // Remove templates that have been deleted from the remote source
+    for (const filename of (result.removed ?? [])) {
+      try {
+        await templateStore.deleteTemplate(filename);
+        console.info(`[app] 已移除已刪除的範本：${filename}`);
+      } catch (err) {
+        console.warn(`[app] 移除範本 "${filename}" 失敗：`, err);
+      }
+    }
+
+    const updatedCount = result.items.length;
+    const removedCount = (result.removed ?? []).length;
+
+    const parts = [];
+    if (updatedCount > 0) parts.push(`已更新 ${updatedCount} 個檔案`);
+    if (removedCount > 0) parts.push(`已移除 ${removedCount} 個已刪除的範本`);
+    const msg = parts.join('，') || '資料已同步';
+
+    if (statusEl) statusEl.textContent = msg;
+    showNotification(msg, 'success');
   } catch (err) {
     console.error('[app] 同步錯誤：', err);
     if (statusEl) statusEl.textContent = '同步錯誤';

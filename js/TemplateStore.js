@@ -3,7 +3,7 @@
  * Templates are stored locally in IndexedDB and identified by filename.
  */
 
-import { getAll, put, get, STORES } from './db.js';
+import { getAll, put, get, del, STORES } from './db.js';
 
 /**
  * @typedef {Object} TemplateRecord
@@ -107,6 +107,18 @@ export class TemplateStore {
     } else {
       this._templates.push(record);
     }
+  }
+
+  /**
+   * Delete a template from both IndexedDB and the in-memory cache.
+   * Used when a template has been removed from the remote source.
+   *
+   * @param {string} filename
+   * @returns {Promise<void>}
+   */
+  async deleteTemplate(filename) {
+    await del(STORES.TEMPLATES, filename);
+    this._templates = this._templates.filter((t) => t.filename !== filename);
   }
 
   /**
