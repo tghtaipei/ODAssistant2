@@ -215,7 +215,7 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
     if (!subjectLegislator) {
       return { skipped: true, reason: '主旨中未找到組別或議員姓名，副本未自動更新' };
     }
-    return _fillSingleLegislator(xmlDoc, subjectLegislator);
+    return _fillSingleLegislator(xmlDoc, subjectLegislator, legislators);
   }
 
   const groupLabel = `第${groupMatch[1]}組`;
@@ -292,41 +292,58 @@ export function autoFillRecipients(xmlDoc, dataRepo) {
 
 /**
  * 主旨中只有議員姓名、沒有組別時，只將該議員新增至副本第一位。
- * 移除所有現有的議員型 <全銜>，保留非議員受文者。
+ * 移除「未確認」（佔位符）的議員型 <全銜>，保留已確認姓名（存在於名冊）的議員受文者，
+ * 並將主旨議員置於第一位。
  *
- * @param {Document} xmlDoc
- * @param {string}   name  - 議員姓名。
+ * @param {Document}  xmlDoc
+ * @param {string}    subjectLegislator - 議員姓名（來自主旨）。
+ * @param {string[]}  legislators       - 完整議員名冊。
  * @returns {AutoFillResult}
  */
-function _fillSingleLegislator(xmlDoc, name) {
+function _fillSingleLegislator(xmlDoc, subjectLegislator, legislators) {
   const fubenEl = xmlDoc.getElementsByTagName('副本')[0];
   if (!fubenEl) {
     return { skipped: true, reason: '文件中未找到 <副本> 區塊，副本未自動更新' };
   }
 
-  // 保留非議員受文者
-  const nonLegislatorChildren = Array.from(fubenEl.childNodes).filter(
-    child =>
-      child.nodeType === Node.ELEMENT_NODE &&
-      /** @type {Element} */ (child).tagName === '全銜' &&
-      !isLegislatorRecipient(/** @type {Element} */ (child))
-  );
-
-  // 移除所有 <全銜>
-  Array.from(fubenEl.childNodes)
-    .filter(child => child.nodeType === Node.ELEMENT_NODE && /** @type {Element} */ (child).tagName === '全銜')
-    .forEach(child => fubenEl.removeChild(child));
-
-  // 新增議員至第一位，再附加非議員受文者
-  fubenEl.appendChild(createLegislatorElement(xmlDoc, name));
-  for (const child of nonLegislatorChildren) {
-    fubenEl.appendChild(child);
+  /**
+   * 從 <全銜> 的直接文字中擷取純議員姓名。
+   * 例如「臺北市議會李傅中武議員」→「李傅中武」。
+   * @param {Element} el
+   * @returns {string|null}
+   */
+  function extractName(el) {
+    const text = getDirectText(el).trim();
+    if (!text.startsWith(RECIP_PREFIX)) return null;
+    const after = text.slice(RECIP_PREFIX.length);
+    const suffixIdx = after.lastIndexOf(RECIP_SUFFIX);
+    if (suffixIdx === -1) return null;
+    return after.slice(0, suffixIdx) || null;
   }
+
+  const allQuanXian = Array.from(fubenEl.getElementsByTagName('全銜'));
+  const legislatorEls    = allQuanXian.filter(el => isLegislatorRecipient(el));
+  const nonLegislatorEls = allQuanXian.filter(el => !isLegislatorRecipient(el));
+
+  // 已確認的「其他」議員：名冊中有此姓名，且不是主旨中的議員
+  const confirmedOtherEls = legislatorEls.filter(el => {
+    const name = extractName(el);
+    return name && legislators.includes(name) && name !== subjectLegislator;
+  });
+  // 未確認（佔位符或不在名冊）的議員元素直接捨棄
+
+  // 移除所有 <全銜>（之後依序重建）
+  allQuanXian.forEach(el => fubenEl.removeChild(el));
+
+  // 順序：① 主旨議員　② 已確認的其他議員　③ 非議員受文者
+  fubenEl.appendChild(createLegislatorElement(xmlDoc, subjectLegislator));
+  for (const el of confirmedOtherEls) fubenEl.appendChild(el);
+  for (const el of nonLegislatorEls)  fubenEl.appendChild(el);
 
   return {
     skipped:    false,
     failed:     false,
-    reason:     `已自動更新副本：僅新增「${name}議員」至第一位`,
+    reason:     `已自動更新副本：僅新增「${subjectLegislator}議員」至第一位`,
     addedCount: 1,
   };
 }
