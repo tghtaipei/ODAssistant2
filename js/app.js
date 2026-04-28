@@ -656,6 +656,22 @@ function _awaitProposerModal(xmlDoc) {
 }
 
 /**
+ * 顯示或清除提案議員 modal 內的行內錯誤訊息。
+ * @param {string} msg - 空字串表示清除。
+ */
+function _setProposerError(msg) {
+  const el = document.getElementById('proposers-error');
+  if (!el) return;
+  if (msg) {
+    el.textContent = msg;
+    el.removeAttribute('hidden');
+  } else {
+    el.textContent = '';
+    el.setAttribute('hidden', '');
+  }
+}
+
+/**
  * 開啟提案議員名單輸入 modal，並掛載互動邏輯。
  * @param {Document}       xmlDoc
  * @param {(()=>void)|null} [afterClose] - modal 關閉後呼叫（確認或略過皆觸發）。
@@ -672,22 +688,69 @@ function _openProposerModal(xmlDoc, afterClose = null) {
 
   // 每次開啟都重設，避免殘留前次資料
   listEl.innerHTML = '';
+  _setProposerError('');
   _addProposerRow(listEl, true);   // 第一列：必填、無刪除鍵
 
   addBtn.onclick = () => _addProposerRow(listEl, false);
 
   confirmBtn.onclick = () => {
-    const inputs = /** @type {NodeListOf<HTMLInputElement>} */ (
-      listEl.querySelectorAll('input.proposer-input')
+    // 清除前次錯誤標記
+    listEl.querySelectorAll('input.input--error').forEach(el => el.classList.remove('input--error'));
+    _setProposerError('');
+
+    const allInputs = /** @type {HTMLInputElement[]} */ (
+      Array.from(listEl.querySelectorAll('input.proposer-input'))
     );
-    const names = Array.from(inputs)
-      .map(inp => inp.value.trim())
-      .filter(n => n.length > 0);
+    const names = allInputs.map(inp => inp.value.trim()).filter(n => n.length > 0);
 
     // 至少需要一個名字
     if (names.length === 0) {
-      inputs[0]?.focus();
+      allInputs[0]?.focus();
       return;
+    }
+
+    // ── 規則 1：議員姓名必須存在於名冊 ────────────────────────────
+    const invalidInputs = allInputs.filter(inp => {
+      const n = inp.value.trim();
+      return n.length > 0 && !dataRepo.hasLegislator(n);
+    });
+    if (invalidInputs.length > 0) {
+      invalidInputs.forEach(inp => inp.classList.add('input--error'));
+      const badNames = invalidInputs.map(i => i.value.trim());
+      _setProposerError(`以下姓名未在議員名冊中找到，請確認後重新輸入：${badNames.join('、')}`);
+      invalidInputs[0]?.focus();
+      return;
+    }
+
+    // ── 規則 2：議長 / 副議長應排在提案議員之後（第 2、3 位）────────
+    const meta = dataRepo.getSessionMeta();
+    if (meta && names.length > 1) {
+      const speaker     = meta.speaker?.trim();
+      const viceSpeaker = meta.viceSpeaker?.trim();
+      const orderErrors = [];
+
+      // 只有當議長不是第一位提案議員時，才需檢查排序
+      if (speaker && names.includes(speaker) && names[0] !== speaker) {
+        const idx = names.indexOf(speaker);
+        if (idx !== 1) {
+          orderErrors.push(`「${speaker}議長」應排在提案議員之後（第 2 位）`);
+        }
+      }
+      if (viceSpeaker && names.includes(viceSpeaker) && names[0] !== viceSpeaker) {
+        const viceIdx = names.indexOf(viceSpeaker);
+        // 若議長也是聯署者且不是第一位，副議長應排在議長之後（第 3 位），否則第 2 位
+        const speakerIsCoSigner = speaker && names.includes(speaker) && names[0] !== speaker;
+        const expectedViceIdx = speakerIsCoSigner ? 2 : 1;
+        if (viceIdx !== expectedViceIdx) {
+          const posLabel = speakerIsCoSigner ? '議長之後（第 3 位）' : '提案議員之後（第 2 位）';
+          orderErrors.push(`「${viceSpeaker}副議長」應排在${posLabel}`);
+        }
+      }
+
+      if (orderErrors.length > 0) {
+        _setProposerError(orderErrors.join('，') + '，請調整順序。');
+        return;
+      }
     }
 
     _proposerPending = false;   // 已成功填寫，清除提醒旗標
@@ -719,6 +782,11 @@ function _addProposerRow(listEl, isFirst) {
   input.className = 'proposer-input';
   input.placeholder = isFirst ? '提案議員姓名（必填）' : '議員姓名';
   input.setAttribute('autocomplete', 'off');
+  input.addEventListener('input', () => {
+    input.classList.remove('input--error');
+    const listEl = input.closest('#proposers-list');
+    if (listEl && !listEl.querySelector('input.input--error')) _setProposerError('');
+  });
   row.appendChild(input);
 
   if (!isFirst) {

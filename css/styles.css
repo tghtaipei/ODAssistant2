@@ -553,6 +553,20 @@ a.topbar-btn { text-decoration: none; display: inline-flex; align-items: center;
   padding: 0;
 }
 .proposer-row .btn-remove:hover { background: #fee2e2; color: #dc2626; }
+.proposer-row input.input--error {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220,38,38,0.12);
+}
+.proposers-error {
+  margin-top: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: var(--border-radius);
+  color: #dc2626;
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
 
 /* ---- Settings Form ---- */
 .settings-form { display: flex; flex-direction: column; gap: 1rem; }
