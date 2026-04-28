@@ -550,8 +550,8 @@ function _wireToolbar() {
       const modal = document.getElementById(target.dataset.closeModal);
       if (modal) _closeModal(modal);
     }
-    // Click outside modal content closes it
-    if (target.classList.contains('modal')) {
+    // Click outside modal content closes it (unless modal opts out via data-no-backdrop-close)
+    if (target.classList.contains('modal') && !('noBackdropClose' in target.dataset)) {
       _closeModal(target);
     }
   });
