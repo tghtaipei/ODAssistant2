@@ -10,8 +10,9 @@
  *   提醒使用者確認名單是否需要更新。
  *
  * 規則 2（主旨屆次一致性）：
- *   若主旨含「第XX屆第XX次定期大會」，比對其屆期與會期數字是否與
+ *   若主旨含「第XX屆第XX次」，比對其屆期與會期數字是否與
  *   CSV 中繼資料一致；若不一致，發出警告提醒更新名單。
+ *   （不限定後接詞彙，適用定期大會、臨時會等各類會期）
  */
 
 import { ValidatorBase } from './ValidatorBase.js';
@@ -74,8 +75,8 @@ export class SessionValidator extends ValidatorBase {
     const subjectEl   = xmlDoc.getElementsByTagName('主旨')[0];
     const subjectText = subjectEl ? (subjectEl.textContent ?? '') : '';
 
-    // 匹配「第XX屆第XX次定期大會」，捕捉屆期與會期數字
-    const sessionMatch = /第(\d+)屆第(\d+)次定期大會/.exec(subjectText);
+    // 匹配「第XX屆第XX次」，捕捉屆期與會期數字（不限定後接詞彙，適用定期大會、臨時會等）
+    const sessionMatch = /第(\d+)屆第(\d+)次/.exec(subjectText);
     if (sessionMatch) {
       const subjectTerm    = parseInt(sessionMatch[1], 10);
       const subjectSession = parseInt(sessionMatch[2], 10);
