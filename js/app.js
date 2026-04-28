@@ -601,7 +601,7 @@ function _updateDocumentTitle(filename) {
   if (titleEl) {
     titleEl.textContent = templateStore.getDisplayName(filename);
   }
-  document.title = `${templateStore.getDisplayName(filename)} — 議會公文案件輔助系統`;
+  document.title = `${templateStore.getDisplayName(filename)} — 公文範本小幫手`;
 }
 
 /**

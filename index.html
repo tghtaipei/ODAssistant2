@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="議會公文案件輔助系統 — 資料僅儲存於本機" />
-  <title>議會公文案件輔助系統</title>
+  <meta name="description" content="公文範本小幫手 — 資料僅儲存於本機" />
+  <title>公文範本小幫手</title>
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#1a56db" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="議會公文" />
+  <meta name="apple-mobile-web-app-title" content="公文小幫手" />
 
   <link rel="stylesheet" href="css/styles.css" />
 </head>
@@ -21,7 +21,7 @@
      Top Navigation Bar
      ==================================================== -->
 <header id="topbar">
-  <h1>議會公文案件輔助系統</h1>
+  <h1>公文範本小幫手</h1>
 
   <span id="sync-status" title="範本同步狀態"></span>
   <span id="document-title" title="目前範本"></span>
@@ -49,9 +49,9 @@
 <main id="main-content">
 
   <!-- Empty state placeholder (shown before a template is loaded) -->
-  <div id="welcome-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:5rem 1rem;text-align:center;">
-    <div style="font-size:3rem;opacity:.35">📋</div>
-    <p style="color:var(--gray-400);font-size:0.9rem">請選擇範本或還原草稿以開始編輯。</p>
+  <div id="welcome-screen">
+    <img class="welcome-bg-img" src="https://drive.google.com/uc?export=view&id=1qUgnYGdANltiofLGI4nW576o4irzz-GQ" alt="公文範本小幫手" />
+    <p>請選擇範本或還原草稿以開始編輯。</p>
   </div>
 
   <!-- Editor mounts here -->
@@ -179,7 +179,7 @@
   <div class="modal-box sm">
 
     <div class="modal-header">
-      <h2 id="modal-welcome-title">歡迎使用議會公文案件輔助系統</h2>
+      <h2 id="modal-welcome-title">歡迎使用公文範本小幫手</h2>
       <button class="modal-close" data-close-modal="modal-welcome" title="關閉" aria-label="關閉">✕</button>
     </div>
 
