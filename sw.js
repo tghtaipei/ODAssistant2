@@ -4,7 +4,7 @@
  * Data (DI files, drafts) is stored in IndexedDB, not SW cache.
  */
 
-const CACHE_NAME = 'odassistant-v22';
+const CACHE_NAME = 'odassistant-v23';
 
 const APP_SHELL = [
   './',
@@ -25,6 +25,7 @@ const APP_SHELL = [
   './js/validation/LegislatorValidator.js',
   './js/validation/GroupValidator.js',
   './js/validation/ExplanationValidator.js',
+  './js/validation/SessionValidator.js',
   './js/RecipientAutoFiller.js',
   './manifest.json',
 ];

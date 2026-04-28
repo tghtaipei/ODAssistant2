@@ -10,12 +10,14 @@
  *  - {@link ExplanationValidator}  → `'*'`
  *  - {@link LegislatorValidator}   → `'*'`
  *  - {@link GroupValidator}        → `'*'`
+ *  - {@link SessionValidator}      → `'*'`
  */
 
 import { LegislatorValidator }  from './LegislatorValidator.js';
 import { GroupValidator }        from './GroupValidator.js';
 import { PlaceholderValidator }  from './PlaceholderValidator.js';
 import { ExplanationValidator }  from './ExplanationValidator.js';
+import { SessionValidator }      from './SessionValidator.js';
 
 /**
  * @typedef {import('./ValidatorBase.js').ValidationResult} ValidationResult
@@ -57,6 +59,7 @@ export class ValidationEngine {
     this.register(WILDCARD, new ExplanationValidator());
     this.register(WILDCARD, new LegislatorValidator());
     this.register(WILDCARD, new GroupValidator());
+    this.register(WILDCARD, new SessionValidator());
   }
 
   /**

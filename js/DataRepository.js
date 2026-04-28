@@ -5,20 +5,43 @@
  * IndexedDB via the `db` module.
  *
  * CSV format (議員分組.csv):
- *   部門,組別號碼,姓名
- *   警政衛生部門,1,洪健益
- *   警政衛生部門,1,劉耀仁
- *   警政衛生部門,2,應曉薇
+ *   第一列（選填）：會期中繼資料
+ *     14,07,20260428,20260616,戴錫欽,葉林傳
+ *     欄位：屆期, 會期, 起始日期(YYYYMMDD), 結束日期(YYYYMMDD), 議長, 副議長
+ *
+ *   後續列：議員分組資料
+ *     部門,組別號碼,姓名
+ *     警政衛生部門,1,洪健益
+ *     警政衛生部門,1,劉耀仁
+ *     警政衛生部門,2,應曉薇
  *
  * Data is stored in IndexedDB under the DATA store using the keys
- * `'legislators'` and `'groups'`.
+ * `'legislators'`, `'groups'`, and `'sessionMeta'`.
  */
 
 import { get, put, STORES } from './db.js';
 
 /** IndexedDB keys for each data type. */
-const KEY_LEGISLATORS = 'legislators';
+const KEY_LEGISLATORS  = 'legislators';
 const KEY_GROUPS       = 'groups';
+const KEY_SESSION_META = 'sessionMeta';
+
+/**
+ * 正規表達式：識別 CSV 第一列為會期中繼資料。
+ * 格式：屆期,會期,起始日期(8碼),結束日期(8碼),議長,副議長
+ * 範例：14,07,20260428,20260616,戴錫欽,葉林傳
+ */
+const META_ROW_RE = /^(\d+),(\d+),(\d{8}),(\d{8}),([^,]+),([^,]*)$/;
+
+/**
+ * @typedef {Object} SessionMeta
+ * @property {string} term        - 屆期（如 "14"）
+ * @property {string} session     - 會期（如 "07"）
+ * @property {string} startDate   - 起始日期 YYYYMMDD（如 "20260428"）
+ * @property {string} endDate     - 結束日期 YYYYMMDD（如 "20260616"）
+ * @property {string} speaker     - 議長姓名
+ * @property {string} viceSpeaker - 副議長姓名
+ */
 
 /**
  * @typedef {{ group: string, legislators: string[] }} GroupEntry
@@ -60,6 +83,13 @@ export class DataRepository {
      * @type {Map<string, Map<string, string>>}
      */
     this._groups = new Map();
+
+    /**
+     * CSV 第一列的會期中繼資料（若存在）。
+     * @private
+     * @type {SessionMeta|null}
+     */
+    this._sessionMeta = null;
   }
 
   // ---------------------------------------------------------------------------
@@ -76,6 +106,7 @@ export class DataRepository {
     await Promise.all([
       this._loadLegislatorsFromDB(),
       this._loadGroupsFromDB(),
+      this._loadSessionMetaFromDB(),
     ]);
   }
 
@@ -98,10 +129,15 @@ export class DataRepository {
    * @returns {Promise<void>}
    */
   async loadMemberGroupCSV(csvContent) {
-    const { legislators, groups } = this._parseMemberGroupCsv(csvContent);
+    const { legislators, groups, sessionMeta } = this._parseMemberGroupCsv(csvContent);
     this._legislators = legislators;
-    this._groups = groups;
-    await Promise.all([this.persistLegislators(), this.persistGroups()]);
+    this._groups      = groups;
+    this._sessionMeta = sessionMeta;
+    await Promise.all([
+      this.persistLegislators(),
+      this.persistGroups(),
+      this.persistSessionMeta(),
+    ]);
   }
 
   /**
@@ -183,6 +219,15 @@ export class DataRepository {
     return [...this._legislators].sort();
   }
 
+  /**
+   * 回傳 CSV 第一列解析出的會期中繼資料，若無則回傳 null。
+   *
+   * @returns {SessionMeta|null}
+   */
+  getSessionMeta() {
+    return this._sessionMeta;
+  }
+
   // ---------------------------------------------------------------------------
   // Persistence
   // ---------------------------------------------------------------------------
@@ -213,6 +258,15 @@ export class DataRepository {
       [...nameMap.entries()],
     ]);
     await put(STORES.DATA, { id: KEY_GROUPS, payload });
+  }
+
+  /**
+   * Save the current session metadata to IndexedDB.
+   *
+   * @returns {Promise<void>}
+   */
+  async persistSessionMeta() {
+    await put(STORES.DATA, { id: KEY_SESSION_META, payload: this._sessionMeta });
   }
 
   // ---------------------------------------------------------------------------
@@ -280,32 +334,63 @@ export class DataRepository {
   }
 
   /**
-   * Parse 「議員分組.csv」 content into legislators Set and a two-level groups Map.
+   * Load session metadata from IndexedDB.
+   * @private
+   */
+  async _loadSessionMetaFromDB() {
+    try {
+      const record = await get(STORES.DATA, KEY_SESSION_META);
+      if (record?.payload) this._sessionMeta = record.payload;
+    } catch (err) {
+      console.error('[DataRepository] 載入會期資料失敗：', err);
+    }
+  }
+
+  /**
+   * Parse 「議員分組.csv」 content into legislators Set, a two-level groups Map,
+   * and optional session metadata from the first row.
    *
-   * CSV 格式（無標題列）：
-   *   部門/會議類型, 組別號碼, 姓名
-   *   定期大會,1,洪健益
-   *   警政衛生部門,2,洪健益
-   *
-   * 同一位議員可在多列出現（每種會議類型各一列）；
-   * 最終回傳的 groups 結構為：
-   *   Map<meetingType, Map<name, `第N組`>>
+   * CSV 格式：
+   *   第一列（選填）會期中繼資料：
+   *     14,07,20260428,20260616,戴錫欽,葉林傳
+   *   後續列：部門/會議類型, 組別號碼, 姓名
+   *     定期大會,1,洪健益
+   *     警政衛生部門,2,洪健益
    *
    * @private
    * @param {string} csv
-   * @returns {{ legislators: Set<string>, groups: Map<string, Map<string, string>> }}
+   * @returns {{ legislators: Set<string>, groups: Map<string, Map<string, string>>, sessionMeta: SessionMeta|null }}
    */
   _parseMemberGroupCsv(csv) {
     const legislators = new Set();
     /** @type {Map<string, Map<string, string>>} */
     const groups = new Map();
+    /** @type {SessionMeta|null} */
+    let sessionMeta = null;
 
-    if (!csv) return { legislators, groups };
+    if (!csv) return { legislators, groups, sessionMeta };
 
     const lines = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    let startIndex = 0;
 
-    for (const line of lines) {
-      const cols = line.split(',').map((c) => c.trim());
+    // 偵測第一列是否為會期中繼資料
+    if (lines.length > 0) {
+      const m = META_ROW_RE.exec(lines[0]);
+      if (m) {
+        sessionMeta = {
+          term:        m[1].trim(),
+          session:     m[2].trim(),
+          startDate:   m[3].trim(),
+          endDate:     m[4].trim(),
+          speaker:     m[5].trim(),
+          viceSpeaker: m[6].trim(),
+        };
+        startIndex = 1; // 跳過中繼資料列
+      }
+    }
+
+    for (let i = startIndex; i < lines.length; i++) {
+      const cols = lines[i].split(',').map((c) => c.trim());
       if (cols.length < 3) continue;
 
       const meetingType = cols[0]; // 部門/會議類型，如「定期大會」、「警政衛生部門」
@@ -316,12 +401,11 @@ export class DataRepository {
 
       legislators.add(name);
 
-      // 確保外層 Map 有此 meetingType 的內層 Map
       if (!groups.has(meetingType)) groups.set(meetingType, new Map());
       groups.get(meetingType).set(name, `第${groupNum}組`);
     }
 
-    return { legislators, groups };
+    return { legislators, groups, sessionMeta };
   }
 
   /**
