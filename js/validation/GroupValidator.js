@@ -210,7 +210,14 @@ export class GroupValidator extends ValidatorBase {
             const actualGroup = dataRepo.getLegislatorGroupByType(name, meetingType);
 
             if (actualGroup === null) {
-              // 此議員在該會議類型下查無組別（可能 CSV 未包含此類型的資料），跳過
+              const notFoundKey = `${name}::notfound::${meetingType}`;
+              if (!reported.has(notFoundKey)) {
+                reported.add(notFoundKey);
+                results.push({
+                  field: '組別',
+                  message: `「${name}議員」未出現在「${meetingType}」的分組名單中，請確認並更新「${meetingType}」分組名單！`,
+                });
+              }
               continue;
             }
 
