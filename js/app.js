@@ -709,10 +709,16 @@ function _openProposerModal(xmlDoc, afterClose = null) {
       return;
     }
 
-    // ── 規則 1：議員姓名必須存在於名冊 ────────────────────────────
+    // ── 規則 1：議員姓名必須存在於名冊，或為議長／副議長 ──────────
+    const meta0 = dataRepo.getSessionMeta();
+    const isValidName = (name) =>
+      dataRepo.hasLegislator(name) ||
+      (!!meta0?.speaker     && meta0.speaker.trim()     === name) ||
+      (!!meta0?.viceSpeaker && meta0.viceSpeaker.trim() === name);
+
     const invalidInputs = allInputs.filter(inp => {
       const n = inp.value.trim();
-      return n.length > 0 && !dataRepo.hasLegislator(n);
+      return n.length > 0 && !isValidName(n);
     });
     if (invalidInputs.length > 0) {
       invalidInputs.forEach(inp => inp.classList.add('input--error'));
@@ -723,10 +729,9 @@ function _openProposerModal(xmlDoc, afterClose = null) {
     }
 
     // ── 規則 2：議長 / 副議長應排在提案議員之後（第 2、3 位）────────
-    const meta = dataRepo.getSessionMeta();
-    if (meta && names.length > 1) {
-      const speaker     = meta.speaker?.trim();
-      const viceSpeaker = meta.viceSpeaker?.trim();
+    if (meta0 && names.length > 1) {
+      const speaker     = meta0.speaker?.trim();
+      const viceSpeaker = meta0.viceSpeaker?.trim();
       const orderErrors = [];
 
       // 只有當議長不是第一位提案議員時，才需檢查排序
